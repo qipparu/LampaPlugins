@@ -1,7 +1,7 @@
 /**
  * Lampa Plugin: Hanime Catalog
  * Description: Displays Hanime items fetched from a Stremio API and integrates with Lampa's full card view.
- * Version: 1.2.2 (Removed async/await to fix ReferenceError)
+ * Version: 1.2.3 (Enhanced FullCardEnhancer to handle direct links via source)
  */
 
 (function () {
@@ -12,6 +12,9 @@
     var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
     var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
     var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
+
+    // Define the source identifier for this addon (based on the provided URL)
+    var ADDON_SOURCE_ID = 'cub';
 
     /**
      * Card Component for Hanime Item in the catalog view.
@@ -105,18 +108,17 @@
                     console.log("Opening full card for:", meta.id, meta.name);
 
                     // Prepare data for Lampa's 'full' component.
-                    // This initial data is used to display the basic info before
-                    // the 'full:create' listener fetches the complete meta and stream data.
                     var cardDataForLampa = {
                         id: meta.id,             // Use Hanime ID
                         name: meta.name,           // Use Hanime name for title
                         title: meta.name,          // Also set title
                         poster_path: meta.poster,  // Use Hanime poster URL (Lampa might handle full URLs)
                         poster: meta.poster,       // Pass poster URL directly too
-                        // description and genres will be fetched in the 'full:create' listener
                         type: meta.type || 'movie',// Pass the type (should be 'movie' based on API)
                         // Add a flag to easily identify our items in the 'full:create' listener
-                        isHanime: true
+                        isHanime: true,
+                        // Also add the source ID to the card data
+                        source: ADDON_SOURCE_ID
                     };
 
                     Lampa.Activity.push({
@@ -224,19 +226,22 @@
     /**
      * Component/Listener to enhance Lampa's 'full' component with Hanime data.
      * This listens for the 'full:create' event which happens when the full card is being built.
-     * Rewritten to use callbacks instead of async/await.
+     * It now checks the source ID or the isHanime flag.
      */
     function HanimeFullCardEnhancer() {
          var network = new Lampa.Reguest();
 
          // Listen for the 'full:create' event
          Lampa.Listener.follow('full', function(e) {
-             // Check if the event is 'create' and if the item is from our catalog
-             // We use the 'isHanime' flag we added when pushing the activity.
-             if (e.type === 'create' && e.object && e.object.card && e.object.card.isHanime) {
+             // Check if the event is 'create' and if the item is from our catalog (isHanime flag)
+             // OR if the source matches our addon's source ID (for direct links)
+             if (e.type === 'create' && e.object && e.object.card &&
+                 (e.object.card.isHanime || e.object.source === ADDON_SOURCE_ID) &&
+                 e.object.method === 'movie') // Ensure it's a movie type as per API
+             {
 
                  var hanimeId = e.object.card.id;
-                 console.log("Enhancing full card for Hanime ID:", hanimeId);
+                 console.log("Enhancing full card for Hanime ID:", hanimeId, "Source:", e.object.source);
 
                  // Access the full component's object to update its properties
                  var fullComponent = e.object;
@@ -321,19 +326,21 @@
                                      quality: stream.name.replace('Hanime.TV\n', '').trim(), // e.g., "720p"
                                      name: stream.name, // e.g., "Hanime.TV\n720p"
                                      // Include behaviorHints if Lampa's player supports them
-                                     // Corrected access to proxyHeaders
                                      headers: stream.behaviorHints && stream.behaviorHints.proxyHeaders && stream.behaviorHints.proxyHeaders.request ? stream.behaviorHints.proxyHeaders.request : undefined
                                  };
                              });
 
                              // Assign the streams to the full component's card object
-                             e.object.card.playlist = lampaStreams;
-                             console.log("Assigned streams to full card:", e.object.card.playlist);
+                             fullComponent.card.playlist = lampaStreams;
+                             console.log("Assigned streams to full card:", fullComponent.card.playlist);
 
-                             // If the full component is already rendered, you might need to
-                             // manually update the UI to show playback options if they weren't available before.
-                             // This heavily depends on Lampa's internal full component implementation.
-                             // Setting `e.object.card.playlist` is the standard way to provide streams to Lampa's player.
+                             // Note: If the full component UI is already rendered, simply updating
+                             // fullComponent.card.playlist might not automatically update the list
+                             // of sources visible to the user without further actions within Lampa's
+                             // full component logic (e.g., calling a specific update method or
+                             // manually triggering a UI refresh relevant to source selection).
+                             // However, setting the playlist property is the correct way to provide
+                             // streams for playback when the user initiates it.
 
                          } else {
                              console.error("Hanime Plugin: Invalid stream data format", streamData);
@@ -347,6 +354,10 @@
                      false,
                      { dataType: 'json', timeout: 10000 }
                   );
+             } else {
+                 // If the event is 'create' but it's not a Hanime item by flag or source,
+                 // let Lampa handle it using its default logic (e.g., TMDB search)
+                 console.log("Full card created for non-Hanime item or unknown source:", e.object.card.id, "Source:", e.object.source);
              }
          });
 
