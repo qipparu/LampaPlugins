@@ -3,13 +3,12 @@
     'use strict';
 
     // Определяем шаблон стандартной карточки Lampa с использованием placeholders {}
-    // Используем базовые классы 'card' и 'selector', которые Lampa использует для элементов,
-    // с которыми можно взаимодействовать и которые участвуют в навигации.
-    // Классы типа layer--render, card--loaded, card--category обычно добавляются Lampa динамически
-    // или через специфичные компоненты (например, items-line). Для простой вертикальной сетки
-    // достаточно базовых классов и правильной структуры контейнера.
+    // Добавляем классы, которые, предположительно, важны для работы скролла и рендеринга в Lampa:
+    // 'layer--render': Указывает, что элемент готов к рендерингу.
+    // 'card--loaded': Указывает, что контент карточки (например, изображение) загружен.
+    // 'card--category': Этот класс виден на карточках внутри category-full в рабочем примере, может влиять на стили/расположение.
     var standardLampaCardTemplate = `
-        <div class="card selector">
+        <div class="card selector layer--render card--category card--loaded">
             <div class="card__view">
                 <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
             </div>
@@ -25,12 +24,6 @@
             title: data.name || ''
         }));
 
-        // Lampa обычно добавляет классы вроде layer--visible, layer--render, card--loaded
-        // после того, как элемент добавлен в DOM и обработан фреймворком для отрисовки.
-        // Мы можем явно добавить некоторые из них на старте, если это помогает рендерингу,
-        // но часто это не обязательно, если структура контейнеров правильная.
-        // cardElement.addClass('layer--render card--loaded'); // Можно попробовать добавить, если без них не рендерится
-
         this.render = function () {
             return cardElement;
         };
@@ -44,6 +37,7 @@
     function HanimeComponent() {
         var network = new Lampa.Reguest();
         // Главный вертикальный скролл
+        // mask: true и over: true обычно нужны для корректной работы скролла
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = []; // Массив всех объектов карточек для управления памятью
         var html = $('<div></div>'); // Корневой DOM элемент компонента
@@ -54,7 +48,7 @@
 
         var last; // Последний сфокусированный элемент
 
-        // Адреса API каталогов
+        // Адреса API каталогов (оставляем для выбора одного URL)
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URLS = {
             newset: API_BASE_URL + "/catalog/movie/newset.json",
@@ -62,8 +56,8 @@
             mostlikes: API_BASE_URL + "/catalog/movie/mostlikes.json",
             mostviews: API_BASE_URL + "/catalog/movie/mostviews.json",
         };
-        // Выбираем один URL для загрузки, так как фильтров и отдельных "каталогов" (рядов) нет
-        // Используем 'newset' как дефолтный URL для отображения в одной вертикальной сетке.
+        // Выбираем один URL для загрузки всех данных, так как фильтров и отдельных рядов нет
+        // Используем 'newset' как дефолтный URL.
         var SELECTED_CATALOG_URL = CATALOG_URLS.newset;
 
 
@@ -108,7 +102,7 @@
         };
 
 
-        // Функция для построения карточек в вертикальном списке
+        // Функция для построения карточек в вертикальной сетке
         this.build = function (result) {
             var _this = this;
 
@@ -137,9 +131,25 @@
             });
 
             // Проверяем, добавлен ли body в scroll, добавляем один раз при первом построении
+             //body будет содержать все карточки в вертикальной сетке.
              if (scroll.render().find('.category-full').length === 0) {
-                 scroll.append(body);
+                 // Обернем body в scroll__body если scroll__body уже не существует внутри scroll.render()
+                 // Это стандартная структура Lampa: scroll > scroll__content > scroll__body > [content]
+                 var scrollBody = scroll.render().find('.scroll__body');
+                 if (scrollBody.length === 0) {
+                     // Если scroll__body еще нет, создаем его и добавляем body внутрь
+                     scrollBody = $('<div class="scroll__body"></div>');
+                     scroll.render().find('.scroll__content').append(scrollBody);
+                 }
+                 scrollBody.append(body); // Добавляем category-full (с карточками) в scroll__body
+             } else {
+                 // Если category-full уже есть внутри scroll__body, просто очистили и добавили новые карточки в body ранее
+                 // Нужно убедиться, что body все еще внутри scroll__body.
+                 if (!scroll.render().find('.scroll__body').find(body).length) {
+                      scroll.render().find('.scroll__body').append(body);
+                 }
              }
+
 
             // Проверяем, добавлен ли scroll в основной html контейнер, добавляем один раз
             if (html.find('.scroll-box').length === 0) {
