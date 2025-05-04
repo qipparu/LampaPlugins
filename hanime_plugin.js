@@ -31,17 +31,15 @@
 
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
-        // Инициализируем Lampa.Scroll
+        // Инициализируем Lampa.Scroll с параметрами mask: true, over: true
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = [];
-        // Основной контейнер компонента с новым уникальным классом
-        var html = $('<div class="hanime-catalog-component"></div>');
-        // Контейнер для карточек внутри скролла (стандартный класс Lampa)
+        // Используем простой div как основной контейнер, полагаясь на Lampa activity layout
+        var html = $('<div></div>');
+        // Используем стандартный класс category-full для контейнера карточек
         var body = $('<div class="category-full"></div>');
-        // Контейнер для кнопок фильтров (остается прежним)
+        // Контейнер для кнопок фильтров
         var head = $("<div class='torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
-        // Новый контейнер, который будет содержать сам Lampa.Scroll
-        var scrollContainer = $('<div></div>').addClass('hanime-scroll-container');
 
 
         var active = 0;
@@ -179,7 +177,7 @@
                              if (params.page === 1) {
                                 items.forEach(function(item) { item.destroy(); });
                                 items = [];
-                                body.empty();
+                                body.empty(); // Очищаем DOM контейнер перед добавлением новых карточек
                             }
                             _this.build(data.metas);
 
@@ -237,39 +235,40 @@
                 cardElement.on('hover:focus', function () {
                     last = cardElement[0];
                     active = items.indexOf(card);
+                    // Обновляем положение скролла, чтобы активный элемент был виден
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta);
                 });
 
+                // Добавляем элемент карточки в контейнер body
                 body.append(cardElement);
-                items.push(card);
+                items.push(card); // Добавляем объект карточки в массив items
             });
 
-            // Добавляем header и scrollContainer в основной html контейнер один раз
-            if (html.find('.torrent-filter').length === 0) {
-                 html.append(head);
-            }
-            // Добавляем body внутрь скролла (получаем его рендер)
-             var scrollRendered = scroll.render();
-             if (scrollRendered.find('.category-full').length === 0) {
+             // Добавляем header и body к scroll только один раз при первом построении
+            var scrollRendered = scroll.render(); // Получаем jQuery объект скролла
+
+            // Добавляем head и body внутрь элемента, который возвращает scroll.render()
+            // Проверяем, чтобы не добавлять повторно при обновлении каталога с фильтрами
+             if (scrollRendered.find('.torrent-filter').length === 0) {
+                  scrollRendered.append(head);
+             }
+             if (scrollRendered.find('.category-full').length === 0) { // Используем стандартный класс
                   scrollRendered.append(body);
              }
 
-            // Добавляем scroll.render() в scrollContainer, затем scrollContainer в html
-            if (scrollContainer.find('.scroll-box').length === 0) { // Проверяем, что scroll еще не добавлен
-                 scrollContainer.append(scrollRendered);
+            // Добавляем сам scroll.render() в основной html контейнер компонента
+            if (html.find('.scroll-box').length === 0) { // У scroll есть класс scroll-box
+                html.append(scrollRendered);
             }
 
-            if (html.find('.hanime-scroll-container').length === 0) { // Проверяем, что scrollContainer еще не добавлен
-                 html.append(scrollContainer);
-            }
-
-
+            // После добавления всех элементов и настройки DOM, сообщаем Lampa о завершении загрузки
             _this.activity.loader(false);
             _this.activity.toggle();
 
+             // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
              scroll.onEnd = function () {
                  console.log("Reached end of scroll. Pagination is not supported by this API.");
              };
@@ -277,27 +276,20 @@
 
         this.empty = function (msg) {
             var empty = new Lampa.Empty({ message: msg });
-            // Добавляем empty внутрь body, а не прямо в scroll.render(), чтобы сохранить структуру
-            body.empty().append(empty.render(true));
-
              var scrollRendered = scroll.render();
-             if (scrollRendered.find('.category-full').length === 0) {
-                  scrollRendered.append(body);
-             }
+            // Очищаем scroll.render() и добавляем заглушку
+            scrollRendered.empty().append(empty.render(true));
 
-             if (scrollContainer.find('.scroll-box').length === 0) {
-                  scrollContainer.append(scrollRendered);
-             }
-
-            if (html.find('.hanime-scroll-container').length === 0) {
-                 html.append(scrollContainer);
+            // Проверяем, что scroll.render() добавлен в html
+            if (html.find('.scroll-box').length === 0) {
+                 html.append(scrollRendered);
             }
-
 
             this.activity.loader(false);
             this.activity.toggle();
             // Переназначаем start на start от Empty компонента, чтобы работала навигация по заглушке
             this.start = empty.start;
+             this.empty_state = true; // Устанавливаем состояние empty
         };
 
         this.create = function () {
@@ -306,17 +298,15 @@
         };
 
         this.start = function () {
-             // При старте компонента, если не показана заглушка (empty),
-             // устанавливаем контроллер для навигации по карточкам
             if (Lampa.Activity.active().activity !== this.activity) return;
 
-            // Если компонент не пустой (есть карточки или идет загрузка), ставим контроллер на контент
-            // Если был показан empty, его start метод уже установил свой контроллер
              if (!this.empty_state) { // Проверяем, не активна ли заглушка empty
                  Lampa.Controller.add('content', {
                      toggle: function () {
-                         Lampa.Controller.collectionSet(scroll.render()); // Устанавливаем коллекцию элементов для навигации
-                         // Фокусируемся на последнем элементе или на первом
+                         // Установка коллекции элементов для навигации стрелками
+                         // Lampa автоматически найдет все элементы с классом 'selector' внутри scroll.render()
+                         Lampa.Controller.collectionSet(scroll.render());
+                         // Фокусировка на последнем активном элементе или первом
                          Lampa.Controller.collectionFocus(last || false, scroll.render());
                      },
                      left: function () {
@@ -328,23 +318,22 @@
                          else {
                               var filterButton = head.find('.LMEShikimori__search')[0];
                               // Проверяем, что фокус находится в области карточек (body)
-                              if (filterButton && body[0].contains(Navigator.focused())) {
+                               // Проверяем, что body присутствует в DOM под scroll.render()
+                               if (filterButton && last && scroll.render()[0].contains(Navigator.focused()) && body[0].contains(Navigator.focused())) {
                                   Lampa.Controller.collectionFocus(filterButton);
-                              } else {
+                               } else {
                                   Navigator.move('right'); // Обычный сдвиг вправо
-                              }
+                               }
                          }
                      },
                      up: function () {
                          if (Navigator.canmove('up')) Navigator.move('up');
                          else {
                              // При навигации вверх с первой строки карточек, попробовать переместить фокус на кнопки в Header
-                             if (body[0].contains(Navigator.focused())) {
+                             // Проверяем, что фокус находится в области карточек (body)
+                             if (scroll.render()[0].contains(Navigator.focused()) && body[0].contains(Navigator.focused())) {
                                   var homeButton = head.find('.LMEShikimori__home')[0];
-                                   // Проверяем, что кнопка Home существует
                                    if(homeButton) Lampa.Controller.collectionFocus(homeButton);
-                                   // Если кнопки нет, можно попробовать переключить на head
-                                   // else Lampa.Controller.toggle('head');
                              } else {
                                  Lampa.Controller.toggle('head');
                              }
@@ -359,15 +348,13 @@
              }
         };
 
-        // Добавляем свойство, чтобы отслеживать состояние empty
-        this.empty_state = false;
-
-        // Переопределяем empty, чтобы установить empty_state и вызвать стандартный empty
-        var originalEmpty = this.empty;
-        this.empty = function(msg) {
-            this.empty_state = true; // Устанавливаем состояние empty
-            originalEmpty.call(this, msg); // Вызываем оригинальный метод empty
-        };
+         // Добавляем свойство empty_state и переопределяем empty
+         this.empty_state = false;
+         var originalEmpty = this.empty;
+         this.empty = function(msg) {
+             this.empty_state = true;
+             originalEmpty.call(this, msg);
+         };
 
 
         this.pause = function () {
@@ -393,7 +380,6 @@
             head = null;
             last = null;
             currentParams = null;
-             scrollContainer = null; // Очищаем ссылку на новый контейнер
         };
         this.back = function () {
             Lampa.Activity.backward();
@@ -405,6 +391,7 @@
 
         window.plugin_hanime_catalog_ready = true;
 
+        // Регистрируем стандартный шаблон карточки
         Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
 
         Lampa.Component.add('hanime_catalog', HanimeComponent);
@@ -431,20 +418,14 @@
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
-        // Стили для новой структуры контейнеров и скролла
-        $('head').append('<style>\
-            /* Контейнер компонента: Flex-контейнер, занимающий всю доступную область */ \
-            .hanime-catalog-component { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; } \
-            /* Контейнер для скролла: Flex-элемент, который растягивается */ \
-            .hanime-scroll-container { flex-grow: 1; } \
-            /* Элемент, который рендерит Lampa.Scroll: Должен заполнять родителя и быть скроллируемым */ \
-            .hanime-scroll-container .scroll-box { width: 100%; height: 100%; overflow: auto; } \
-            /* Контейнер карточек: Добавляем padding */ \
+        // Добавляем только стиль для отступа фильтров, если он нужен
+        // Удалены стили, которые могли вызвать проблемы с макетом и скроллом
+         $('head').append('<style>\
+            .torrent-filter { margin-left: 1.5em; padding-top: 1.5em; /* Оставим небольшой отступ сверху */ } \
+            /* Возможно, для category-full тоже нужен padding */ \
             .category-full { padding: 1.5em; } \
-            /* Выравнивание карточек */ \
+            /* Стили для стандартных карточек и их выравнивания */ \
             .category-full.category-full { justify-content: space-around; } \
-            /* Отступ для кнопок фильтра */ \
-            .torrent-filter { margin-left: 1.5em; padding-top: 1.5em; /* Добавлен небольшой отступ сверху */ } \
         </style>');
 
 
