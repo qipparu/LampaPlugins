@@ -30,6 +30,13 @@
             aspect-ratio: 2/3;
             object-fit: cover;
         }
+        .scroll--horizontal {
+            overflow-x: auto;
+        }
+        .scroll__body {
+            display: flex;
+            gap: 10px;
+        }
     `;
     document.head.appendChild(style);
 
@@ -114,14 +121,13 @@
                 items.push(card);
             });
 
-            // Обновляем структуру скролла
-            if (scroll.render().find('.items-line').length === 0) {
-                var scrollContent = scroll.render().find('.scroll__content');
-                scrollContent.empty().append(body);
-            }
+            // Обертка для горизонтального скролла
+            var scrollBody = $('<div class="scroll__body"></div>').append(body);
+            var scrollContainer = scroll.render();
+            scrollContainer.find('.scroll__content').empty().append(scrollBody);
 
             if (html.find('.scroll-box').length === 0) {
-                html.append(scroll.render(true));
+                html.append(scrollContainer);
             }
 
             _this.activity.loader(false);
