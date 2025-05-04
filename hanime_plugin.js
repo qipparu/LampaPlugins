@@ -21,7 +21,7 @@
             id: data.id, //
             img: data.poster, //
             title: data.name, //
-            description: data.description ? data.description.substring(0, 150) + '...' : 'No description available.' // Limit description length
+            // description: data.description ? data.description.substring(0, 150) + '...' : 'No description available.' // Description is not used in the template
         });
 
         var cardElement = $(cardTemplate);
@@ -301,7 +301,7 @@
                 text-overflow: ellipsis;
                 text-align: center; /* Выравнивание по центру */
              }
-            /* Add more styles as needed, similar to the example */
+            /* Styles for description are not needed as it's not in the template */
         `;
         Lampa.Template.add('hanime-style', `<style>${style}</style>`);
 
@@ -314,7 +314,7 @@
                     {/* Add overlays like type or rating if available/desired */}
                 </div>
                 <div class="hanime-card__title">{title}</div>
-                {/* <div class="hanime-card__description">{description}</div> Optional description */}
+                {/* <div class="hanime-card__description">{description}</div> Описание закомментировано и не выводится */}
             </div>
         `);
 
