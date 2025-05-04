@@ -105,9 +105,20 @@
 
         this.clearItems = function() {
              console.log("Hanime Plugin: Clearing items.");
-             items.forEach(function(item) { item.destroy(); });
+             var itemsToDestroy = items;
              items = [];
              body.empty();
+
+             setTimeout(function() {
+                console.log("Hanime Plugin: Destroying cards (deferred).");
+                itemsToDestroy.forEach(function(item) {
+                    try {
+                       item.destroy();
+                    } catch (e) {
+                       console.error("Hanime Plugin: Error destroying item", e);
+                    }
+                });
+             }, 0);
         };
 
         this.build = function (result) {
