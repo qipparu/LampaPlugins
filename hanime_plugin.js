@@ -3,9 +3,13 @@
     'use strict';
 
     // Определяем шаблон стандартной карточки Lampa с использованием placeholders {}
-    // Используем классы, стандартные для карточек в вертикальном списке Lampa
+    // Используем базовые классы 'card' и 'selector', которые Lampa использует для элементов,
+    // с которыми можно взаимодействовать и которые участвуют в навигации.
+    // Классы типа layer--render, card--loaded, card--category обычно добавляются Lampa динамически
+    // или через специфичные компоненты (например, items-line). Для простой вертикальной сетки
+    // достаточно базовых классов и правильной структуры контейнера.
     var standardLampaCardTemplate = `
-        <div class="card selector layer--render card--loaded">
+        <div class="card selector">
             <div class="card__view">
                 <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
             </div>
@@ -20,6 +24,12 @@
             img: data.poster || '',
             title: data.name || ''
         }));
+
+        // Lampa обычно добавляет классы вроде layer--visible, layer--render, card--loaded
+        // после того, как элемент добавлен в DOM и обработан фреймворком для отрисовки.
+        // Мы можем явно добавить некоторые из них на старте, если это помогает рендерингу,
+        // но часто это не обязательно, если структура контейнеров правильная.
+        // cardElement.addClass('layer--render card--loaded'); // Можно попробовать добавить, если без них не рендерится
 
         this.render = function () {
             return cardElement;
@@ -37,13 +47,14 @@
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = []; // Массив всех объектов карточек для управления памятью
         var html = $('<div></div>'); // Корневой DOM элемент компонента
-        // Контейнер для карточек внутри скролла
+        // Контейнер для карточек внутри скролла.
+        // Класс category-full используется в Lampa для вертикальных сеток карточек.
         var body = $('<div class="category-full"></div>');
 
 
         var last; // Последний сфокусированный элемент
 
-        // Адреса API
+        // Адреса API каталогов
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URLS = {
             newset: API_BASE_URL + "/catalog/movie/newset.json",
@@ -51,22 +62,25 @@
             mostlikes: API_BASE_URL + "/catalog/movie/mostlikes.json",
             mostviews: API_BASE_URL + "/catalog/movie/mostviews.json",
         };
-        // Выбираем один URL для загрузки, так как фильтров нет
-        var DEFAULT_CATALOG_URL = CATALOG_URLS.newset;
+        // Выбираем один URL для загрузки, так как фильтров и отдельных "каталогов" (рядов) нет
+        // Используем 'newset' как дефолтный URL для отображения в одной вертикальной сетке.
+        var SELECTED_CATALOG_URL = CATALOG_URLS.newset;
 
 
         var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var PROXY_BASE_URL = "http://77.91.78.5:3000"; // Адрес прокси
 
-        // Функция для загрузки каталога аниме
+        // Функция для загрузки данных из выбранного каталога
         this.fetchCatalog = function () {
             var _this = this;
             _this.activity.loader(true); // Показываем лоадер
 
             network.clear(); // Отменяем предыдущие запросы
 
-            // Загружаем данные с выбранного URL
-            network.native(DEFAULT_CATALOG_URL,
+            console.log("Fetching catalog from:", SELECTED_CATALOG_URL);
+
+            // Выполняем HTTP запрос к выбранному URL каталога
+            network.native(SELECTED_CATALOG_URL,
                 function (data) {
                     // Успешный ответ от API
                     if (data && data.metas && Array.isArray(data.metas)) {
@@ -117,7 +131,7 @@
                     _this.fetchStreamAndMeta(meta.id, meta); // Вызываем загрузку потока
                 });
 
-                // Добавляем элемент карточки в контейнер body
+                // Добавляем элемент карточки в контейнер body (category-full)
                 body.append(cardElement);
                 items.push(card); // Добавляем объект карточки в массив items
             });
@@ -346,7 +360,7 @@
                     url: '', // URL для истории
                     title: 'Hanime Catalog', // Заголовок активности
                     component: 'hanime_catalog', // Имя компонента для запуска
-                    page: 1 // Начальная страница (для совместимости, хотя пагинация не используется)
+                    page: 1 // Начальная страница (для совместимости)
                 });
             });
             // Добавляем пункт меню в первый список меню Lampa
