@@ -1,17 +1,18 @@
 (function () {
     'use strict';
 
-    // CORS-прокси сервер
-    const PROXY = 'http://77.91.78.5:3000/proxy?url=';
-
-    // Функция для обёртки URL через прокси
-    function wrapWithProxy(url) {
-        if (!url.startsWith(PROXY)) {
-            return PROXY + encodeURIComponent(url);
-        }
-        return url;
+    // Используем функцию для обработки CORS
+    function fetchWithCORS(url) {
+        return fetch('http://77.91.78.5:3000/', {  // URL для прокси сервера
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: url })
+        }).then(response => response.text());
     }
 
+    // Класс для создания карточки аниме
     function HanimeCard(data) {
         var cardTemplate = Lampa.Template.get('hanime-card', {
             id: data.id,
@@ -32,6 +33,7 @@
         };
     }
 
+    // Основной компонент для работы с каталогом аниме
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
@@ -110,14 +112,13 @@
 
             _this.activity.loader(true);
 
-            Promise.all([  
+            Promise.all([
                 new Promise((resolve, reject) => {
                     network.native(streamUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
                 }),
                 meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
-                    network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
+                     network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
                 })
-
             ]).then(([streamData, metaDataResponse]) => {
                  _this.activity.loader(false);
 
@@ -131,7 +132,7 @@
 
                     var playerObject = {
                         title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                        url: wrapWithProxy(streamToPlay.url), // Проксимируем URL
+                        url: streamToPlay.url,
                         poster: fullMetaData.poster || fullMetaData.background,
                     };
 
@@ -242,7 +243,7 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        var style = ` 
+        var style = `
             .hanime-catalog__body.category-full {
                 justify-content: space-around;
             }
@@ -269,53 +270,18 @@
             .hanime-card__view {
                 position: relative;
                 height: 270px;
-                background-color: rgba(255,255,255,0.05);
-                border-radius: 0.5em;
-                overflow: hidden;
+                background-color: #232323;
             }
-             .hanime-card__img {
-                position: absolute;
+            .hanime-card__view img {
+                object-fit: cover;
                 width: 100%;
                 height: 100%;
-                object-fit: cover;
-                border-radius: 0.5em;
-            }
-             .hanime-card__title {
-                margin-top: 0.5em;
-                padding: 0 0.5em;
-                font-size: 1em;
-                font-weight: bold;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                text-align: center;
-                color: #fff;
-             }
-            .hanime-card__description {
-                display: none;
-            }
-
-            .menu__ico svg {
-                 width: 1.5em;
-                 height: 1.5em;
             }
         `;
-        Lampa.Template.add('hanime-style', `<style>${style}</style>`);
-
-        Lampa.Template.add('hanime-card', `
-            <div class="hanime-card card layer--visible layer--render">
-                <div class="hanime-card__view">
-                    <img src="{img}" class="hanime-card__img" />
-                </div>
-                <div class="hanime-card__title">{title}</div>
-            </div>
-        `);
-
-        Lampa.Activity.push(new HanimeComponent({
-            name: 'Hanime'
-        }));
-
+        $('<style>').text(style).appendTo('head');
+        Lampa.Plugins.add('hanime', HanimeComponent);
     }
 
+    // Инициализация плагина
     startPlugin();
 })();
