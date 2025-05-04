@@ -18,10 +18,10 @@
         // Use Lampa's template system. Define a template or build HTML string.
         // Template defined below in startPlugin function.
         var cardTemplate = Lampa.Template.get('hanime-card', {
-            id: data.id, // [cite: 250]
-            img: data.poster, // [cite: 250]
-            title: data.name, // [cite: 250]
-            description: data.description ? data.description.substring(0, 150) + '...' : 'No description available.' // [cite: 250] Limit description length
+            id: data.id, //
+            img: data.poster, //
+            title: data.name, //
+            description: data.description ? data.description.substring(0, 150) + '...' : 'No description available.' // Limit description length
         });
 
         var cardElement = $(cardTemplate);
@@ -63,9 +63,9 @@
             network.clear(); // Clear previous requests
             network.native(CATALOG_URL,
                 function (data) {
-                    // Check if data has the expected structure [cite: 250]
+                    // Check if data has the expected structure
                     if (data && data.metas && Array.isArray(data.metas)) {
-                        _this.build(data.metas); // [cite: 250]
+                        _this.build(data.metas); //
                     } else {
                         _this.empty("Invalid data format received from API.");
                         console.error("Hanime Plugin: Invalid data format", data);
@@ -92,7 +92,7 @@
             scroll.minus(); // Reset scroll
 
             // Add items to the body
-            result.forEach(function (meta) { // [cite: 250]
+            result.forEach(function (meta) { //
                 var card = new HanimeCard(meta); // Create a card for each item
                 var cardElement = card.render();
 
@@ -102,18 +102,18 @@
                     scroll.update(cardElement, true); // Ensure focused item is visible
                 }).on('hover:enter', function () {
                     // Action when a card is selected (Enter key or click)
-                    console.log("Selected Anime:", meta.id, meta.name); // [cite: 250]
+                    console.log("Selected Anime:", meta.id, meta.name); //
                     // Fetch stream and meta details here
-                    _this.fetchStreamAndMeta(meta.id); // [cite: 250]
+                    _this.fetchStreamAndMeta(meta.id); //
                     // Example: Push to a player or details activity (depends on Lampa's structure)
                     // Lampa.Activity.push({
-                    //    url: '',
-                    //    title: meta.name, // [cite: 250]
-                    //    component: 'hanime_player', // A new component to handle playback
-                    //    id: meta.id, // [cite: 250]
-                    //    card: meta // Pass the metadata [cite: 250]
+                    //     url: '',
+                    //     title: meta.name, //
+                    //     component: 'hanime_player', // A new component to handle playback
+                    //     id: meta.id, //
+                    //     card: meta // Pass the metadata
                     // });
-                     Lampa.Noty.show('Fetching details for: ' + meta.name); // [cite: 250] Placeholder notification
+                     Lampa.Noty.show('Fetching details for: ' + meta.name); // Placeholder notification
                 });
 
                 body.append(cardElement);
@@ -173,6 +173,7 @@
                 Lampa.Noty.show('Error fetching details: ' + error);
             });
         };
+
 
         /**
          * Handles empty results or errors
@@ -267,33 +268,45 @@
             .hanime-card {
                 width: 185px; /* Adjust card width as needed */
                 margin-bottom: 1.5em;
+                border-radius: 0.5em; /* Скругленные углы для всей карточки */
+                overflow: hidden; /* Обрезаем контент по скругленным углам */
+                transition: transform 0.2s ease, box-shadow 0.2s ease; /* Плавный переход */
+            }
+            .hanime-card.selector:focus {
+                transform: scale(1.05); /* Увеличение при фокусировке */
+                box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Красная тень при фокусировке */
+                z-index: 1; /* Поднимаем фокусированную карточку */
             }
             .hanime-card__view {
                 position: relative;
                 height: 270px; /* Adjust card height */
                 background-color: rgba(255,255,255,0.05); /* Placeholder background */
-                border-radius: 0.3em;
-                 overflow: hidden;
+                border-radius: 0.5em; /* Скругленные углы для контейнера изображения */
+                overflow: hidden; /* Обрезаем изображение по скругленным углам */
             }
              .hanime-card__img {
-                 position: absolute;
-                 width: 100%;
-                 height: 100%;
-                 object-fit: cover; /* Ensure image covers the area */
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                object-fit: cover; /* Ensure image covers the area */
+                border-radius: 0.5em; /* Скругленные углы для самого изображения */
             }
              .hanime-card__title {
-                 margin-top: 0.5em;
-                 font-size: 0.9em;
-                 white-space: nowrap;
-                 overflow: hidden;
-                 text-overflow: ellipsis;
-            }
+                margin-top: 0.5em;
+                padding: 0 0.5em; /* Добавляем небольшой отступ по бокам */
+                font-size: 1em; /* Немного увеличим размер шрифта */
+                font-weight: bold; /* Сделаем жирным */
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: center; /* Выравнивание по центру */
+             }
             /* Add more styles as needed, similar to the example */
         `;
         Lampa.Template.add('hanime-style', `<style>${style}</style>`);
 
         // Define the HTML template for a single card
-        // Based on the provided API data structure [cite: 250]
+        // Based on the provided API data structure
         Lampa.Template.add('hanime-card', `
             <div class="hanime-card card selector layer--visible layer--render">
                 <div class="hanime-card__view">
@@ -301,7 +314,7 @@
                     {/* Add overlays like type or rating if available/desired */}
                 </div>
                 <div class="hanime-card__title">{title}</div>
-                 {/* <div class="hanime-card__description">{description}</div> Optional description */}
+                {/* <div class="hanime-card__description">{description}</div> Optional description */}
             </div>
         `);
 
@@ -313,9 +326,9 @@
             var menu_item = $(`
                 <li class="menu__item selector">
                     <div class="menu__ico">
-                        <svg fill="currentColor" viewBox="0 0 24 24" ... > {/* Use an appropriate SVG icon */}
-                           {/* Placeholder Icon Path */}
-                           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"></path>
+                        <svg fill="currentColor" viewBox="0 0 24 24"> {/* Use an appropriate SVG icon */}
+                            {/* Placeholder Icon Path - Changed to a simple play icon */}
+                            <path d="M8 5v14l11-7z"></path>
                         </svg>
                     </div>
                     <div class="menu__text">Hanime Catalog</div>
