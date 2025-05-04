@@ -1,97 +1,31 @@
 (function () {
     'use strict';
 
-    // Перенесенные шаблоны и стили карточек из 1111.txt
-    // Адаптированы и переименованы. Убраны элементы типа, рейтинга, сезона, статуса.
-    var hanimeShikimoriStyle = `
-        .hanime-catalog__body.category-full {
-            justify-content: space-around;
-        }
-        .hanime-shikimori-card {
-            width: 185px;
-            margin-bottom: 1.5em;
-            border-radius: 0.5em;
-            overflow: hidden;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            position: relative;
-            box-sizing: border-box;
-        }
-        .hanime-shikimori-card.selector:focus {
-            transform: scale(1.05);
-            box-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
-            z-index: 5;
-            border: 3px solid rgba(255, 255, 255, 0.5);
-        }
-         .hanime-shikimori-card.selector.focus:not(.native) {
-             border-color: transparent;
-             outline: none;
-         }
+    // Удаляем кастомные стили из 1111.txt
+    // var hanimeShikimoriStyle = ` ... `;
 
-        .hanime-shikimori-card__view {
-            position: relative;
-            height: 270px;
-            background-color: rgba(255,255,255,0.05);
-            border-radius: 0.5em;
-            overflow: hidden;
-        }
-         .hanime-shikimori-card__img {
-             position: absolute;
-             width: 100%;
-             height: 100%;
-             object-fit: cover;
-             border-radius: 0.5em;
-         }
-         .hanime-shikimori-card__title {
-             margin-top: 0.5em;
-             padding: 0 0.5em;
-             font-size: 1em;
-             font-weight: bold;
-             white-space: nowrap;
-             overflow: hidden;
-             text-overflow: ellipsis;
-             text-align: center;
-             color: #fff;
-         }
-        /* Удалены стили для type, vote, season, status */
+    // Удаляем кастомный шаблон карточки из 1111.txt
+    // var hanimeShikimoriCardTemplate = ` ... `;
 
-        /* Styles for header/filters from 1111.txt */
-        .hanime-catalog .torrent-filter { /* Added .hanime-catalog prefix */
-            margin-left:1.5em;
-        }
-        .hanime-catalog .simple-button--filter { /* Added .hanime-catalog prefix */
-             margin-right: 1em;
-             display: inline-block;
-        }
-
-
-        .menu__ico svg {
-              width: 1.5em;
-              height: 1.5em;
-        }
-    `;
-
-    // Модифицированный шаблон карточки, убраны элементы type, vote, season, status
-    var hanimeShikimoriCardTemplate = `
-        <div class="hanime-shikimori-card card selector layer--visible layer--render">
-            <div class="hanime-shikimori-card__view">
-                <img src="{img}" class="hanime-shikimori-card__img" alt="{title}" loading="lazy" />
-                </div>
-            <div class="hanime-shikimori-card__title">{title}</div>
+    // Используем простую структуру карточки, основанную на стандартных классах Lampa.tv
+    // Lampa TV имеет встроенные стили для этих классов, включая выделение для .selector:focus
+    var standardLampaCardTemplate = `
+        <div class="card selector">
+            <div class="card__view">
+                <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
+            </div>
+            <div class="card__title">{title}</div>
         </div>
     `;
 
-    // Модифицированная функция HanimeCard
+    // Модифицированная функция HanimeCard, использующая структуру стандартной карточки Lampa
     function HanimeCard(data) {
         // Маппинг данных из Hanime API к полям шаблона
-        var cardTemplate = Lampa.Template.get('hanime-shikimori-card', {
-            id: data.id,
-            img: data.poster,
-            title: data.name,
-            // Поля type, rate, season, status больше не нужны в шаблоне
-        });
+        var cardTemplate = standardLampaCardTemplate.replace('{img}', data.poster || '') // Используем пустую строку, если poster нет
+                                                    .replace('{title}', data.name || ''); // Используем пустую строку, если name нет
 
         var cardElement = $(cardTemplate);
-        cardElement.addClass('selector');
+        // Класс 'selector' уже добавлен в шаблоне standardLampaCardTemplate
 
         this.render = function () {
             return cardElement;
@@ -104,11 +38,17 @@
 
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
-        var scroll = new Lampa.Scroll({ step: 250 });
+        // Убираем mask: true и over: true, т.к. они специфичны для старых кастомных стилей.
+        // Стандартный скролл Lampa должен работать корректно без них, или с настройками по умолчанию.
+        var scroll = new Lampa.Scroll({ step: 250 }); // Возможно, здесь нужны другие настройки Lampa Scroll по умолчанию
         var items = [];
-        var html = $('<div class="hanime-catalog"></div>');
-        var body = $('<div class="hanime-catalog__body category-full"></div>');
+        // Убираем кастомный класс hanime-catalog у контейнера
+        var html = $('<div></div>');
+        // Убираем кастомный класс hanime-catalog__body, используем стандартный category-full
+        var body = $('<div class="category-full"></div>');
+         // Перенесен HTML заголовка с кнопками фильтрации
         var head = $("<div class='torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
+
 
         var active = 0;
         var last;
@@ -131,7 +71,6 @@
         this.headeraction = function () {
              var filters = {};
 
-             // Оставляем только фильтр сортировки
              filters.sort = {
                  title: 'Sort',
                  items: [
@@ -142,15 +81,11 @@
                  ]
              };
 
-             // Удалены определения фильтров AnimeKindEnum, status, genre, seasons
-
              function queryForHanime() {
                  var query = {};
-                 // Собираем выбранную сортировку
                  filters.sort.items.forEach(function (a) {
                      if (a.selected) query.sort = a.code;
                  });
-                 // Другие фильтры больше не собираются
                  return query;
              }
 
@@ -187,15 +122,14 @@
                      title: 'Filters',
                      items: [
                          { title: Lampa.Lang.translate('search_start'), searchHanime: true },
-                         filters.sort, // Оставляем только сортировку
-                         // Удалены пункты меню для AnimeKindEnum, status, genre, seasons
+                         filters.sort,
                      ],
                      onBack: function onBack() {
                          Lampa.Controller.toggle("content");
                      },
                      onSelect: function onSelect(a) {
                          if (a.searchHanime) {
-                             boundSearch(); // Вызываем привязанную функцию
+                             boundSearch();
                          } else submenu(a, mainMenu);
                      }
                  });
@@ -319,16 +253,19 @@
                 items.push(card);
             });
 
+            // Добавляем header и body к scroll только один раз при первом построении
             if (scroll.render().find('.torrent-filter').length === 0) {
                  scroll.append(head);
             }
-             if (scroll.render().find('.hanime-catalog__body').length === 0) {
+             if (scroll.render().find('.category-full').length === 0) { // Используем стандартный класс
                  scroll.append(body);
              }
 
+            // Добавляем scroll к html контейнеру
             if (html.find('.scroll-box').length === 0) {
                 html.append(scroll.render(true));
             }
+
 
             _this.activity.loader(false);
             _this.activity.toggle();
@@ -336,7 +273,6 @@
              // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
              scroll.onEnd = function () {
                  console.log("Reached end of scroll. Pagination is not supported by this API.");
-                 // Lampa.Noty.show("Конец списка");
              };
         };
 
@@ -436,49 +372,43 @@
             Lampa.Controller.add('content', {
                 toggle: function () {
                     // Установка коллекции элементов для навигации стрелками
+                    // Lampa автоматически найдет все элементы с классом 'selector' внутри scroll.render()
                     Lampa.Controller.collectionSet(scroll.render());
-                    // Фокусировка на последнем активном элементе или первом
+                    // Фокусировка на последнем активном элементе или первом (по умолчанию Navigator.focus)
+                    // last хранит последний элемент, на который был наведен фокус
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 left: function () {
-                    // Логика навигации влево
                     if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu'); // Переход в главное меню Lampa
+                    else Lampa.Controller.toggle('menu');
                 },
                 right: function () {
-                    // Логика навигации вправо
                     if (Navigator.canmove('right')) Navigator.move('right');
                     else {
-                        // При навигации вправо с последней карточки, попробовать переместить фокус на кнопку фильтра
                         var filterButton = head.find('.LMEShikimori__search')[0];
                          if (filterButton && last && body[0].contains(Navigator.focused())) {
                               Lampa.Controller.collectionFocus(filterButton);
                          } else {
-                             // Если не на карточке или нет кнопки фильтра, выполнить обычный move right
                              Navigator.move('right');
                          }
                     }
                 },
                 up: function () {
-                    // Логика навигации вверх
                     if (Navigator.canmove('up')) Navigator.move('up');
                     else {
-                         // При навигации вверх с первой строки карточек, попробовать переместить фокус на кнопки в Header
                          if (body[0].contains(Navigator.focused())) {
                              var homeButton = head.find('.LMEShikimori__home')[0];
                               if(homeButton) Lampa.Controller.collectionFocus(homeButton);
                          } else {
-                             Lampa.Controller.toggle('head'); // Переход в стандартный заголовок Lampa
+                             Lampa.Controller.toggle('head');
                          }
                     }
                 },
                 down: function () {
-                    // Логика навигации вниз
                     if (Navigator.canmove('down')) Navigator.move('down');
                 },
-                back: this.back // Назначение кнопки "назад"
+                back: this.back
             });
-            // Переключаем управление на наш компонент "content"
             Lampa.Controller.toggle('content');
         };
 
@@ -516,9 +446,13 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        // Добавляем шаблоны и стили
-        Lampa.Template.add('hanime-shikimori-style', hanimeShikimoriStyle);
-        Lampa.Template.add('hanime-shikimori-card', hanimeShikimoriCardTemplate);
+        // Регистрируем стандартный шаблон, если нужно (Lampa может иметь его по умолчанию)
+        // Но лучше определить его явно здесь, чтобы быть уверенными в структуре
+         Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
+
+        // Кастомные стили больше не нужны, т.к. используем стандартные
+        // $('head').append(Lampa.Template.get('hanime-shikimori-style', {}, true));
+
 
         Lampa.Component.add('hanime_catalog', HanimeComponent);
 
@@ -544,8 +478,13 @@
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
-        // Применяем стили
-        $('head').append(Lampa.Template.get('hanime-shikimori-style', {}, true));
+        // Применяем стандартные стили Lampa для карточек через их классы
+        // Ничего специального здесь не нужно, если базовые стили Lampa уже загружены.
+        // Если вдруг выделение все равно не видно, возможно, нужно добавить минимальные стили фокуса.
+        // Например:
+        // $('head').append('<style>.card.selector:focus { outline: 3px solid var(--color-selector, #f00); }</style>');
+        // Но обычно Lampa сама добавляет эти стили.
+
 
         if (window.appready) {
              addMenuItem();
