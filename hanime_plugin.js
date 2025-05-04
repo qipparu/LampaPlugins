@@ -127,11 +127,13 @@
             console.log("Hanime Plugin: Building catalog with", result.length, "items.");
             result.forEach(function (meta) {
                 var card = new HanimeCard(meta);
-                var cardElement = card.render();
+                var cardElement = card.render(); // jQuery object
                 cardElement.on('hover:focus', function () {
-                    last = cardElement[0];
+                    last = cardElement[0]; // Store native DOM element
                     active = items.indexOf(card);
-                    scroll.update(cardElement, true);
+                    // --- ИЗМЕНЕНО: Передаем нативный DOM элемент в scroll.update ---
+                    scroll.update(cardElement[0], true); // <-- Передаем .get(0) или [0]
+                    // ---------------------------------------------------------------
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta);
@@ -142,7 +144,7 @@
 
             if (scroll.render().find('.hanime-head').length === 0) { scroll.append(head); }
              if (scroll.render().find('.hanime-catalog__body').length === 0) { scroll.append(body); }
-             scroll.update();
+             scroll.update(); // Обновляем scroll после добавления всех элементов
 
             if (html.children().length === 0) { html.append(scroll.render(true)); }
 
@@ -329,7 +331,7 @@
     }
 
     // --- Функция для добавления пользовательских стилей и шаблонов ---
-    // Определение перемещено выше, чтобы ее можно было вызвать из startPlugin
+    // Определение перемещено выше
     function addTemplatesAndStyles() {
          if (window.hanime_templates_added) {
              console.log("Hanime Plugin: Templates and styles already added (via flag).");
@@ -352,10 +354,7 @@
              .menu__ico svg { width: 1.5em; height: 1.5em; }
          `;
          Lampa.Template.add('hanime-style', `<style>${style}</style>`);
-
-         // Аппендим стиль в head документа сразу после добавления в реестр шаблонов
          $('head').append(Lampa.Template.get('hanime-style', {}, true));
-
 
          var cardTemplate = `
              <div class="hanime-card card selector layer--visible layer--render">
@@ -373,7 +372,7 @@
 
 
     // --- Основная функция инициализации плагина ---
-    // Определение перемещено ниже addTemplatesAndStyles и addMenuItem
+    // Определение перемещено ниже
     function startPlugin() {
         if (window.plugin_hanime_catalog_ready) {
             console.log("Hanime Plugin: Already initialized.");
@@ -383,23 +382,20 @@
         window.plugin_hanime_catalog_ready = true;
         console.log("Hanime Plugin: Starting initialization.");
 
-        // Добавляем стили и шаблоны, и аппендим их в head
         addTemplatesAndStyles();
 
-        // Регистрируем наш компонент в Lampa
         Lampa.Component.add('hanime_catalog', HanimeComponent);
         console.log("Hanime Plugin: Component 'hanime_catalog' added.");
 
-        // Добавляем пункт меню после готовности приложения Lampa
         if (window.appready) {
              console.log("Hanime Plugin: App is ready, adding menu item.");
-             addMenuItem(); // Вызываем здесь, функция определена выше
+             addMenuItem();
         } else {
              console.log("Hanime Plugin: Waiting for app ready event.");
              Lampa.Listener.follow('app', function (e) {
                  if (e.type === 'ready') {
                       console.log("Hanime Plugin: App ready event received, adding menu item.");
-                      addMenuItem(); // Вызываем здесь, функция определена выше
+                      addMenuItem();
                  }
              });
         }
@@ -407,7 +403,6 @@
     }
 
     // --- Запускаем инициализацию плагина ---
-    // Проверяем на всякий случай, чтобы не запустить инициализацию несколько раз
     if (!window.plugin_hanime_catalog_ready) {
         startPlugin();
     } else {
