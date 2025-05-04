@@ -131,9 +131,10 @@
                 cardElement.on('hover:focus', function () {
                     last = cardElement[0]; // Store native DOM element
                     active = items.indexOf(card);
-                    // --- ИЗМЕНЕНО: Передаем нативный DOM элемент в scroll.update ---
-                    scroll.update(cardElement[0], true); // <-- Передаем .get(0) или [0]
-                    // ---------------------------------------------------------------
+                    // --- УДАЛЕНО: Вызов scroll.update из обработчика focus ---
+                    // scroll.update(cardElement[0], true); // Этот вызов может быть причиной ошибки
+                    // Lampa Controller/Navigator + Scroll должны сами управлять скроллом при фокусе
+                    // ------------------------------------------------------
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta);
@@ -144,7 +145,10 @@
 
             if (scroll.render().find('.hanime-head').length === 0) { scroll.append(head); }
              if (scroll.render().find('.hanime-catalog__body').length === 0) { scroll.append(body); }
-             scroll.update(); // Обновляем scroll после добавления всех элементов
+
+            // --- СОХРАНЕНО: Основной вызов scroll.update после добавления всех элементов ---
+            scroll.update(); // Обновляем scroll после добавления всех элементов в body и body в scroll
+            // ---------------------------------------------------------------------------
 
             if (html.children().length === 0) { html.append(scroll.render(true)); }
 
@@ -372,7 +376,7 @@
 
 
     // --- Основная функция инициализации плагина ---
-    // Определение перемещено ниже
+    // Определение перемещено ниже addTemplatesAndStyles и addMenuItem
     function startPlugin() {
         if (window.plugin_hanime_catalog_ready) {
             console.log("Hanime Plugin: Already initialized.");
