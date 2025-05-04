@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    // Стандартный шаблон карточки Lampa
+    // Стандартная карточка Lampa
     var standardLampaCardTemplate = `
         <div class="card selector layer--render card--loaded">
             <div class="card__view">
@@ -107,7 +107,7 @@
                     const horizontalScroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
                     const scrollContainer = $('<div class="items-line__body"></div>').append(horizontalScroll.render());
                     
-                    // Добавляем обработчик клика на "Еще"
+                    // Обработчик клика на "Еще"
                     sectionHeader.find('.items-line__more').on('hover:enter', () => {
                         Lampa.Activity.push({
                             url: '',
@@ -443,6 +443,59 @@
         
         this.back = function () {
             Lampa.Activity.backward();
+        };
+
+        this.fetchStreamAndMeta = function (id, meta) {
+            var _this = this;
+            var streamUrl = API_BASE_URL + `/stream/movie/${id}.json`;
+            
+            _this.activity.loader(true);
+            network.native(streamUrl,
+                function(streamData) {
+                    _this.activity.loader(false);
+                    
+                    if (streamData && streamData.streams && streamData.streams.length > 0) {
+                        let finalStreamUrl = streamData.streams[0].url;
+                        
+                        try {
+                            const url = new URL(finalStreamUrl);
+                            if (url.hostname.includes('highwinds-cdn.com') || 
+                                url.hostname.includes('proxy.hentai.stream')) {
+                                finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
+                            }
+                        } catch (e) {
+                            console.error("URL parsing error", e);
+                        }
+
+                        const playerObject = {
+                            title: meta.name || meta.title || 'Без названия',
+                            url: finalStreamUrl,
+                            poster: meta.poster || meta.background
+                        };
+                        
+                        if (playerObject.url) {
+                            Lampa.Player.play(playerObject);
+                            Lampa.Player.playlist([playerObject]);
+                            
+                            const historyMeta = {
+                                id: meta.id,
+                                title: meta.name || meta.title,
+                                poster: meta.poster || meta.background
+                            };
+                            Lampa.Favorite.add('history', historyMeta, 100);
+                        } else {
+                            Lampa.Noty.show('Не удалось получить ссылку на поток.');
+                        }
+                    } else {
+                        Lampa.Noty.show('Потоки не найдены.');
+                    }
+                },
+                function(errorStatus) {
+                    _this.activity.loader(false);
+                    console.error("Stream fetch error", errorStatus);
+                    Lampa.Noty.show(`Ошибка загрузки потока: ${errorStatus}`);
+                }
+            );
         };
     }
 
