@@ -1,18 +1,6 @@
 (function () {
     'use strict';
 
-    // Используем функцию для обработки CORS
-    function fetchWithCORS(url) {
-        return fetch('http://77.91.78.5:3000/', {  // URL для прокси сервера
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url: url })
-        }).then(response => response.text());
-    }
-
-    // Класс для создания карточки аниме
     function HanimeCard(data) {
         var cardTemplate = Lampa.Template.get('hanime-card', {
             id: data.id,
@@ -33,7 +21,6 @@
         };
     }
 
-    // Основной компонент для работы с каталогом аниме
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
@@ -47,6 +34,11 @@
         var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
         var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
+
+        // --- Добавлено: Адрес вашего прокси сервера ---
+        var PROXY_BASE_URL = "http://77.91.78.5:3000";
+        // ---------------------------------------------
+
 
         this.fetchCatalog = function () {
             var _this = this;
@@ -118,11 +110,12 @@
                 }),
                 meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
                      network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
-                })
-            ]).then(([streamData, metaDataResponse]) => {
-                 _this.activity.loader(false);
+                 })
 
-                 const fullMetaData = metaDataResponse.meta || metaDataResponse;
+            ]).then(([streamData, metaDataResponse]) => {
+                _this.activity.loader(false);
+
+                const fullMetaData = metaDataResponse.meta || metaDataResponse;
 
                 console.log("Stream Data:", streamData);
                 console.log("Full Meta Data:", fullMetaData);
@@ -130,9 +123,28 @@
                 if (streamData && streamData.streams && streamData.streams.length > 0) {
                     var streamToPlay = streamData.streams[0];
 
+                    // --- Изменено: Использование прокси для URL потока ---
+                    var finalStreamUrl = streamToPlay.url;
+
+                    // Проверяем, является ли URL потока тем, который вызывает проблему CORS (на highwinds-cdn.com)
+                    // Если да, оборачиваем его прокси
+                    try {
+                         var url = new URL(finalStreamUrl);
+                         if (url.hostname.includes('highwinds-cdn.com')) {
+                             // Оборачиваем оригинальный URL потока адресом прокси
+                             finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
+                             console.log("Original stream URL proxied:", finalStreamUrl);
+                         }
+                    } catch (e) {
+                        console.error("Hanime Plugin: Failed to parse or proxy stream URL", e);
+                        // Продолжаем использовать оригинальный URL, если не удалось обработать
+                    }
+                    // -------------------------------------------------------
+
+
                     var playerObject = {
                         title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                        url: streamToPlay.url,
+                        url: finalStreamUrl, // Используем URL после возможного проксирования
                         poster: fullMetaData.poster || fullMetaData.background,
                     };
 
@@ -142,15 +154,15 @@
                          Lampa.Player.playlist([playerObject]);
 
                          if (fullMetaData) {
-                               const historyMeta = {
-                                   id: fullMetaData.id,
-                                   title: fullMetaData.name || fullMetaData.title,
-                                   poster: fullMetaData.poster || fullMetaData.background,
-                                   runtime: fullMetaData.runtime,
-                                   year: fullMetaData.year,
-                                   original_name: fullMetaData.original_name
-                               };
-                              Lampa.Favorite.add('history', historyMeta, 100);
+                                const historyMeta = {
+                                    id: fullMetaData.id,
+                                    title: fullMetaData.name || fullMetaData.title,
+                                    poster: fullMetaData.poster || fullMetaData.background,
+                                    runtime: fullMetaData.runtime,
+                                    year: fullMetaData.year,
+                                    original_name: fullMetaData.original_name
+                                };
+                                Lampa.Favorite.add('history', historyMeta, 100);
                          }
 
                     } else {
@@ -164,9 +176,9 @@
                 }
 
             }).catch(error => {
-                 _this.activity.loader(false);
-                 console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
-                 Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
+                _this.activity.loader(false);
+                console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
+                Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
             });
         };
 
@@ -270,18 +282,85 @@
             .hanime-card__view {
                 position: relative;
                 height: 270px;
-                background-color: #232323;
+                background-color: rgba(255,255,255,0.05);
+                border-radius: 0.5em;
+                overflow: hidden;
             }
-            .hanime-card__view img {
-                object-fit: cover;
-                width: 100%;
-                height: 100%;
+             .hanime-card__img {
+                 position: absolute;
+                 width: 100%;
+                 height: 100%;
+                 object-fit: cover;
+                 border-radius: 0.5em;
+             }
+             .hanime-card__title {
+                 margin-top: 0.5em;
+                 padding: 0 0.5em;
+                 font-size: 1em;
+                 font-weight: bold;
+                 white-space: nowrap;
+                 overflow: hidden;
+                 text-overflow: ellipsis;
+                 text-align: center;
+                 color: #fff;
+             }
+            .hanime-card__description {
+                display: none;
+            }
+
+            .menu__ico svg {
+                  width: 1.5em;
+                  height: 1.5em;
             }
         `;
-        $('<style>').text(style).appendTo('head');
-        Lampa.Plugins.add('hanime', HanimeComponent);
+        Lampa.Template.add('hanime-style', `<style>${style}</style>`);
+
+        Lampa.Template.add('hanime-card', `
+            <div class="hanime-card card layer--visible layer--render">
+                <div class="hanime-card__view">
+                    <img src="{img}" class="hanime-card__img" alt="{title}" loading="lazy" />
+                </div>
+                <div class="hanime-card__title">{title}</div>
+            </div>
+        `);
+
+        Lampa.Component.add('hanime_catalog', HanimeComponent);
+
+        function addMenuItem() {
+            var menu_item = $(`
+                <li class="menu__item selector">
+                    <div class="menu__ico">
+                        <svg fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"></path>
+                        </svg>
+                    </div>
+                    <div class="menu__text">Hanime Catalog</div>
+                </li>
+            `);
+            menu_item.on('hover:enter', function () {
+                Lampa.Activity.push({
+                    url: '',
+                    title: 'Hanime Catalog',
+                    component: 'hanime_catalog',
+                    page: 1
+                });
+            });
+            $('.menu .menu__list').eq(0).append(menu_item);
+        }
+
+        $('head').append(Lampa.Template.get('hanime-style', {}, true));
+
+        if (window.appready) {
+             addMenuItem();
+        } else {
+             Lampa.Listener.follow('app', function (e) {
+                 if (e.type === 'ready') {
+                     addMenuItem();
+                 }
+             });
+        }
     }
 
-    // Инициализация плагина
     startPlugin();
+
 })();
