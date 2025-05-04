@@ -6,9 +6,10 @@
 (function () {
     'use strict';
 
-    // --- Helper Functions (if needed, similar to the example) ---
-    // E.g., _asyncToGenerator, etc., if async operations are used extensively.
-    // For simplicity, this example uses standard Promises and fetch.
+    // --- Helper Functions (if needed) ---
+    // (Functions like _asyncToGenerator, etc., are typically included by a build process if needed,
+    // but for simplicity and direct modification of the provided code, we'll assume Lampa provides necessary helpers or
+    // stick to standard Promises and fetch where possible, as in the original code.)
 
     /**
      * Card Component for Hanime Item
@@ -17,11 +18,12 @@
     function HanimeCard(data) {
         // Use Lampa's template system. Define a template or build HTML string.
         // Template defined below in startPlugin function.
+        // Описание не выводится в карточке, только изображение и название.
         var cardTemplate = Lampa.Template.get('hanime-card', {
-            id: data.id, //
-            img: data.poster, //
-            title: data.name, //
-            // description: data.description ? data.description.substring(0, 150) + '...' : 'No description available.' // Description is not used in the template
+            id: data.id,
+            img: data.poster,
+            title: data.name,
+            // description is intentionally excluded from the template
         });
 
         var cardElement = $(cardTemplate);
@@ -65,14 +67,14 @@
                 function (data) {
                     // Check if data has the expected structure
                     if (data && data.metas && Array.isArray(data.metas)) {
-                        _this.build(data.metas); //
+                        _this.build(data.metas);
                     } else {
-                        _this.empty("Invalid data format received from API.");
+                        _this.empty("Неверный формат данных от API.");
                         console.error("Hanime Plugin: Invalid data format", data);
                     }
                 },
                 function (errorStatus, errorText) {
-                    _this.empty("Failed to load catalog. Status: " + errorStatus);
+                    _this.empty("Не удалось загрузить каталог. Статус: " + errorStatus);
                     console.error("Hanime Plugin: Failed to load catalog", errorStatus, errorText);
                 },
                 false, // No custom headers needed for this API
@@ -92,7 +94,7 @@
             scroll.minus(); // Reset scroll
 
             // Add items to the body
-            result.forEach(function (meta) { //
+            result.forEach(function (meta) {
                 var card = new HanimeCard(meta); // Create a card for each item
                 var cardElement = card.render();
 
@@ -102,18 +104,9 @@
                     scroll.update(cardElement, true); // Ensure focused item is visible
                 }).on('hover:enter', function () {
                     // Action when a card is selected (Enter key or click)
-                    console.log("Selected Anime:", meta.id, meta.name); //
-                    // Fetch stream and meta details here
-                    _this.fetchStreamAndMeta(meta.id); //
-                    // Example: Push to a player or details activity (depends on Lampa's structure)
-                    // Lampa.Activity.push({
-                    //     url: '',
-                    //     title: meta.name, //
-                    //     component: 'hanime_player', // A new component to handle playback
-                    //     id: meta.id, //
-                    //     card: meta // Pass the metadata
-                    // });
-                     Lampa.Noty.show('Fetching details for: ' + meta.name); // Placeholder notification
+                    console.log("Selected Anime:", meta.id, meta.name);
+                    // Fetch stream and meta details and then open player
+                    _this.fetchStreamAndMeta(meta.id, meta.name);
                 });
 
                 body.append(cardElement);
@@ -127,50 +120,72 @@
         };
 
         /**
-         * Fetches Stream and Metadata for a specific anime ID
+         * Fetches Stream and Metadata for a specific anime ID and opens player
          * @param {string} id - The anime ID
+         * @param {string} title - The anime title for player display
          */
-        this.fetchStreamAndMeta = function (id) {
+        this.fetchStreamAndMeta = function (id, title) {
             var _this = this;
             var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
             var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
 
             _this.activity.loader(true);
 
-            // Use Promise.all to fetch both simultaneously
             Promise.all([
-                fetch(streamUrl).then(res => res.ok ? res.json() : Promise.reject(res.status)),
-                fetch(metaUrl).then(res => res.ok ? res.json() : Promise.reject(res.status))
+                fetch(streamUrl).then(res => res.ok ? res.json() : Promise.reject('Stream API error: ' + res.status)),
+                fetch(metaUrl).then(res => res.ok ? res.json() : Promise.reject('Meta API error: ' + res.status))
             ]).then(([streamData, metaData]) => {
                  _this.activity.loader(false);
                 console.log("Stream Data:", streamData);
                 console.log("Meta Data:", metaData);
 
-                // **TODO:** Implement player logic using streamData and metaData
-                // This part heavily depends on how Lampa handles video playback.
-                // You'll likely need to extract the stream URL and pass it to Lampa's player.
-                // Example structure from user prompt: streamData.streams[0].url
-                // Example structure from user prompt: metaData.meta
-
                 if (streamData && streamData.streams && streamData.streams.length > 0) {
-                    var firstStream = streamData.streams[0];
-                    Lampa.Noty.show('Stream URL (Highest Quality): ' + firstStream.url, 5000);
-                     // Example: Start playback (adjust according to Lampa's player API)
-                     // Lampa.Player.play({
-                     //     url: firstStream.url,
-                     //     title: metaData.meta.name,
-                     //     poster: metaData.meta.poster || metaData.meta.background,
-                     //     // Add behaviorHints like proxyHeaders if necessary
-                     //     behaviorHints: firstStream.behaviorHints
-                     // });
+                    // Find the stream with the highest quality (assuming resolution is in the name/title)
+                    // Or just use the first stream as a basic implementation
+                    var bestStream = streamData.streams.reduce((prev, current) => {
+                         // Basic quality check, assuming '1080p', '720p', etc. in title or name
+                         const getQuality = (s) => {
+                             const match = (s.name || s.title || '').match(/(\d+)p/);
+                             return match ? parseInt(match[1]) : 0;
+                         };
+                         return getQuality(current) > getQuality(prev) ? current : prev;
+                    }, streamData.streams[0]);
+
+
+                    var playerObject = {
+                        title: metaData.meta.name || title, // Use meta title if available, fallback to catalog title
+                        url: bestStream.url,
+                        poster: metaData.meta.poster || metaData.meta.background, // Use meta poster/background
+                        // Add behaviorHints if needed by Lampa/Stremio standard
+                        // behaviorHints: bestStream.behaviorHints
+                    };
+
+                    // Check if the stream URL is valid before playing
+                    if (playerObject.url) {
+                         console.log("Launching player with:", playerObject);
+                         Lampa.Player.play(playerObject);
+                         // Lampa.Player.playlist([playerObject]); // If only one stream, playlist is optional
+
+                         // Optional: Add to history if Lampa's history feature is desired
+                         if (metaData.meta) {
+                              Lampa.Favorite.add('history', metaData.meta, 100);
+                         }
+
+                    } else {
+                         Lampa.Noty.show('Не удалось получить ссылку на поток.');
+                         console.error("Hanime Plugin: No valid stream URL found.");
+                    }
+
+
                 } else {
-                     Lampa.Noty.show('No stream data found for this item.');
+                     Lampa.Noty.show('Потоки не найдены для этого аниме.');
+                     console.warn("Hanime Plugin: No streams found in stream data.", streamData);
                 }
 
             }).catch(error => {
                  _this.activity.loader(false);
-                console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
-                Lampa.Noty.show('Error fetching details: ' + error);
+                 console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
+                 Lampa.Noty.show('Ошибка загрузки деталей: ' + error);
             });
         };
 
@@ -197,28 +212,36 @@
         this.start = function () {
             // Called when the activity gains focus
             if (Lampa.Activity.active().activity !== this.activity) return; // Ignore if not the active activity
+
+            // Set up controller for remote navigation
             Lampa.Controller.add('content', {
                 toggle: function () {
+                    // Set the collection of focusable elements to the scrollable items
                     Lampa.Controller.collectionSet(scroll.render());
+                    // Focus on the last selected item, or the first if none was selected
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 left: function () {
                     if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
+                    else Lampa.Controller.toggle('menu'); // Move to menu on left edge
                 },
                 right: function () {
-                    if (Navigator.canmove('right')) Navigator.move('right');
+                    if (Navigator.canmove('right')) Navigator.move('right'); // Move right within items
                 },
                 up: function () {
                     if (Navigator.canmove('up')) Navigator.move('up');
-                    else Lampa.Controller.toggle('head'); // Or appropriate element
+                    else Lampa.Controller.toggle('head'); // Move to header on top edge
                 },
                 down: function () {
-                    if (Navigator.canmove('down')) Navigator.move('down');
+                    if (Navigator.canmove('down')) Navigator.move('down'); // Move down within items
+                },
+                enter: function () {
+                     // Trigger the hover:enter event on the focused element
+                     // This is handled by the .on('hover:enter', ...) listener in build()
                 },
                 back: this.back // Use component's back method
             });
-            Lampa.Controller.toggle('content');
+            Lampa.Controller.toggle('content'); // Activate this controller
         };
 
         this.pause = function () {
@@ -244,6 +267,7 @@
             scroll = null;
             html = null;
             body = null;
+            last = null; // Clear last focused element
         };
 
         // Define the back behavior (usually close the activity)
@@ -271,11 +295,12 @@
                 border-radius: 0.5em; /* Скругленные углы для всей карточки */
                 overflow: hidden; /* Обрезаем контент по скругленным углам */
                 transition: transform 0.2s ease, box-shadow 0.2s ease; /* Плавный переход */
+                position: relative; /* Needed for z-index on focus */
             }
             .hanime-card.selector:focus {
                 transform: scale(1.05); /* Увеличение при фокусировке */
                 box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Красная тень при фокусировке */
-                z-index: 1; /* Поднимаем фокусированную карточку */
+                z-index: 5; /* Поднимаем фокусированную карточку выше других */
             }
             .hanime-card__view {
                 position: relative;
@@ -300,8 +325,14 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 text-align: center; /* Выравнивание по центру */
+                color: #fff; /* Цвет текста */
              }
             /* Styles for description are not needed as it's not in the template */
+            /* Add a basic style for the menu item icon container */
+            .menu__ico svg {
+                 width: 1.5em; /* Adjust icon size */
+                 height: 1.5em; /* Adjust icon size */
+            }
         `;
         Lampa.Template.add('hanime-style', `<style>${style}</style>`);
 
@@ -327,7 +358,7 @@
                 <li class="menu__item selector">
                     <div class="menu__ico">
                         <svg fill="currentColor" viewBox="0 0 24 24"> {/* Use an appropriate SVG icon */}
-                            {/* Placeholder Icon Path - Changed to a simple play icon */}
+                            {/* Simple play icon - common for media/catalog */}
                             <path d="M8 5v14l11-7z"></path>
                         </svg>
                     </div>
@@ -336,22 +367,29 @@
             `);
             menu_item.on('hover:enter', function () {
                 Lampa.Activity.push({
-                    url: '', // Use component name below
+                    url: '', // URL is not strictly needed for component-based activities
                     title: 'Hanime Catalog',
                     component: 'hanime_catalog', // The component registered above
                     page: 1 // Initial page if pagination is added later
                 });
             });
-            $('.menu .menu__list').eq(0).append(menu_item); // Append to the main menu
+            // Append to the main menu - assuming the first .menu .menu__list is the main one
+            $('.menu .menu__list').eq(0).append(menu_item);
         }
 
         // Append styles and add menu item once Lampa is ready
-        $('body').append(Lampa.Template.get('hanime-style', {}, true));
-        if (window.appready) addMenuItem();
-        else {
-            Lampa.Listener.follow('app', function (e) {
-                if (e.type === 'ready') addMenuItem();
-            });
+        // Ensure styles are added before components are rendered
+        $('head').append(Lampa.Template.get('hanime-style', {}, true)); // Append to head is often better for styles
+
+        // Wait for Lampa app to be ready before adding the menu item
+        if (window.appready) {
+             addMenuItem();
+        } else {
+             Lampa.Listener.follow('app', function (e) {
+                 if (e.type === 'ready') {
+                      addMenuItem();
+                 }
+             });
         }
     }
 
