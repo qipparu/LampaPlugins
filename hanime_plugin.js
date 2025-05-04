@@ -4,11 +4,7 @@
     // Удаляем кастомные стили из 1111.txt
     // var hanimeShikimoriStyle = ` ... `;
 
-    // Удаляем кастомный шаблон карточки из 1111.txt
-    // var hanimeShikimoriCardTemplate = ` ... `;
-
-    // Используем простую структуру карточки, основанную на стандартных классах Lampa.tv
-    // Lampa TV имеет встроенные стили для этих классов, включая выделение для .selector:focus
+    // Определяем шаблон стандартной карточки Lampa с использованием placeholders {}
     var standardLampaCardTemplate = `
         <div class="card selector">
             <div class="card__view">
@@ -18,11 +14,13 @@
         </div>
     `;
 
-    // Модифицированная функция HanimeCard, использующая структуру стандартной карточки Lampa
+    // Модифицированная функция HanimeCard, использующая Lampa.Template.get
     function HanimeCard(data) {
-        // Маппинг данных из Hanime API к полям шаблона
-        var cardTemplate = standardLampaCardTemplate.replace('{img}', data.poster || '') // Используем пустую строку, если poster нет
-                                                    .replace('{title}', data.name || ''); // Используем пустую строку, если name нет
+        // Используем Lampa.Template.get для правильной подстановки данных в шаблон
+        var cardTemplate = Lampa.Template.get('standard-lampa-card', {
+            img: data.poster || '', // Используем пустую строку, если poster нет
+            title: data.name || ''  // Используем пустую строку, если name нет
+        });
 
         var cardElement = $(cardTemplate);
         // Класс 'selector' уже добавлен в шаблоне standardLampaCardTemplate
@@ -38,13 +36,12 @@
 
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
-        // Убираем mask: true и over: true, т.к. они специфичны для старых кастомных стилей.
-        // Стандартный скролл Lampa должен работать корректно без них, или с настройками по умолчанию.
-        var scroll = new Lampa.Scroll({ step: 250 }); // Возможно, здесь нужны другие настройки Lampa Scroll по умолчанию
+        // Вернули параметры mask: true и over: true для Lampa.Scroll
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = [];
-        // Убираем кастомный класс hanime-catalog у контейнера
+        // Используем простой div как основной контейнер
         var html = $('<div></div>');
-        // Убираем кастомный класс hanime-catalog__body, используем стандартный category-full
+        // Используем стандартный класс category-full для контейнера карточек
         var body = $('<div class="category-full"></div>');
          // Перенесен HTML заголовка с кнопками фильтрации
         var head = $("<div class='torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
@@ -185,7 +182,7 @@
                              if (params.page === 1) {
                                 items.forEach(function(item) { item.destroy(); });
                                 items = [];
-                                body.empty();
+                                body.empty(); // Очищаем DOM контейнер перед добавлением новых карточек
                             }
                             _this.build(data.metas);
 
@@ -231,6 +228,7 @@
         this.build = function (result) {
             var _this = this;
 
+            // При загрузке первой страницы (или смене фильтров) очищаем существующие карточки и DOM
             if (currentParams.page === 1) {
                  body.empty();
                  items = [];
@@ -240,39 +238,43 @@
                 var card = new HanimeCard(meta);
                 var cardElement = card.render();
 
+                // Добавляем обработчики событий hover:focus и hover:enter
                 cardElement.on('hover:focus', function () {
-                    last = cardElement[0];
-                    active = items.indexOf(card);
+                    last = cardElement[0]; // Сохраняем последний сфокусированный элемент
+                    active = items.indexOf(card); // Сохраняем индекс активной карточки
+                    // Обновляем положение скролла, чтобы активный элемент был виден
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
-                    _this.fetchStreamAndMeta(meta.id, meta);
+                    _this.fetchStreamAndMeta(meta.id, meta); // Вызываем загрузку потока
                 });
 
+                // Добавляем элемент карточки в контейнер body
                 body.append(cardElement);
-                items.push(card);
+                items.push(card); // Добавляем объект карточки в массив items
             });
 
-            // Добавляем header и body к scroll только один раз при первом построении
+            // Проверяем, добавлены ли header и body в scroll, добавляем один раз
             if (scroll.render().find('.torrent-filter').length === 0) {
                  scroll.append(head);
             }
-             if (scroll.render().find('.category-full').length === 0) { // Используем стандартный класс
+             if (scroll.render().find('.category-full').length === 0) {
                  scroll.append(body);
              }
 
-            // Добавляем scroll к html контейнеру
+            // Проверяем, добавлен ли scroll в основной html контейнер, добавляем один раз
             if (html.find('.scroll-box').length === 0) {
                 html.append(scroll.render(true));
             }
 
-
+            // После добавления всех элементов и настройки DOM, сообщаем Lampa о завершении загрузки
             _this.activity.loader(false);
             _this.activity.toggle();
 
              // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
              scroll.onEnd = function () {
                  console.log("Reached end of scroll. Pagination is not supported by this API.");
+                 // Lampa.Noty.show("Конец списка");
              };
         };
 
@@ -375,7 +377,7 @@
                     // Lampa автоматически найдет все элементы с классом 'selector' внутри scroll.render()
                     Lampa.Controller.collectionSet(scroll.render());
                     // Фокусировка на последнем активном элементе или первом (по умолчанию Navigator.focus)
-                    // last хранит последний элемент, на который был наведен фокус
+                    // last хранит последний элемент, на который был наведен фокус в build -> hover:focus
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 left: function () {
@@ -446,13 +448,11 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        // Регистрируем стандартный шаблон, если нужно (Lampa может иметь его по умолчанию)
-        // Но лучше определить его явно здесь, чтобы быть уверенными в структуре
-         Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
+        // Регистрируем стандартный шаблон карточки с помощью Lampa.Template.add
+        Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
 
-        // Кастомные стили больше не нужны, т.к. используем стандартные
-        // $('head').append(Lampa.Template.get('hanime-shikimori-style', {}, true));
-
+        // Стандартные стили Lampa для карточек и выделения должны работать автоматически
+        // при использовании классов 'card' и 'selector'.
 
         Lampa.Component.add('hanime_catalog', HanimeComponent);
 
@@ -478,12 +478,9 @@
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
-        // Применяем стандартные стили Lampa для карточек через их классы
-        // Ничего специального здесь не нужно, если базовые стили Lampa уже загружены.
-        // Если вдруг выделение все равно не видно, возможно, нужно добавить минимальные стили фокуса.
-        // Например:
-        // $('head').append('<style>.card.selector:focus { outline: 3px solid var(--color-selector, #f00); }</style>');
-        // Но обычно Lampa сама добавляет эти стили.
+        // Применяем любые необходимые общие стили, если есть
+        // Например, если для torrent-filter нужен специфичный margin-left
+         $('head').append('<style>.torrent-filter{margin-left:1.5em;}</style>');
 
 
         if (window.appready) {
