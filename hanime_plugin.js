@@ -183,8 +183,8 @@
                                 items.forEach(function(item) { item.destroy(); });
                                 items = [];
                                 body.empty(); // Очищаем DOM контейнер перед добавлением новых карточек
-                             }
-                             _this.build(data.metas);
+                            }
+                            _this.build(data.metas);
 
                          } else {
                              if (params.page === 1) {
@@ -333,23 +333,23 @@
                          }
 
                      } else {
-                           Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                           console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
-                      }
+                          Lampa.Noty.show('Потоки не найдены для этого аниме.');
+                          console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
+                     }
 
+                },
+                 function(errorStatus, errorText) {
+                      _this.activity.loader(false);
+                      console.error("Hanime Plugin: Failed to fetch stream details", errorStatus, errorText);
+                      Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
                  },
-                  function(errorStatus, errorText) {
-                       _this.activity.loader(false);
-                       console.error("Hanime Plugin: Failed to fetch stream details", errorStatus, errorText);
-                       Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
-                  },
-                  false,
-                  {
-                      dataType: 'json',
-                      timeout: 10000
-                  }
-             );
-         };
+                 false,
+                 {
+                     dataType: 'json',
+                     timeout: 10000
+                 }
+            );
+        };
 
         this.empty = function (msg) {
             var empty = new Lampa.Empty({ message: msg });
