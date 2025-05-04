@@ -122,6 +122,11 @@
                         title: fullMetaData.name || fullMetaData.title || 'Без названия',
                         url: streamToPlay.url,
                         poster: fullMetaData.poster || fullMetaData.background,
+                        // *** ДОБАВЛЕНО: Подсказка для плеера использовать прокси ***
+                        behaviorHints: {
+                             proxyHeaders: true
+                        }
+                        // ****************************************************
                     };
 
                     if (playerObject.url) {
