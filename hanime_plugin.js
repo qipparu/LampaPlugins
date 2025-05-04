@@ -271,10 +271,9 @@
             _this.activity.loader(false);
             _this.activity.toggle();
 
-             // Обработчик конца скролла (пагинация не поддерживается API)
+             // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
              scroll.onEnd = function () {
-                 // Убрано сообщение о конце списка
-                 // console.log("Reached end of scroll. Pagination is not supported by this API.");
+                 console.log("Reached end of scroll. Pagination is not supported by this API.");
                  // Lampa.Noty.show("Конец списка");
              };
         };
@@ -334,23 +333,23 @@
                          }
 
                      } else {
-                          Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                          console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
-                     }
+                           Lampa.Noty.show('Потоки не найдены для этого аниме.');
+                           console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
+                      }
 
-                },
-                 function(errorStatus, errorText) {
-                      _this.activity.loader(false);
-                      console.error("Hanime Plugin: Failed to fetch stream details", errorStatus, errorText);
-                      Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
                  },
-                 false,
-                 {
-                     dataType: 'json',
-                     timeout: 10000
-                 }
-            );
-        };
+                  function(errorStatus, errorText) {
+                       _this.activity.loader(false);
+                       console.error("Hanime Plugin: Failed to fetch stream details", errorStatus, errorText);
+                       Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
+                  },
+                  false,
+                  {
+                      dataType: 'json',
+                      timeout: 10000
+                  }
+             );
+         };
 
         this.empty = function (msg) {
             var empty = new Lampa.Empty({ message: msg });
@@ -426,7 +425,7 @@
             network.clear();
             Lampa.Arrays.destroy(items);
             if (scroll) {
-                scroll.onEnd = null; // Убираем обработчик при уничтожении
+                scroll.onEnd = null;
                 scroll.destroy();
             }
             if (html) html.remove();
