@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    // Определяем адрес локального прокси/помощника, как в других рабочих плагинах
+    // Определяем адрес локального прокси/помощника Lampac
     var Defined = {
         localhost: 'http://77.91.84.6:9118/'
     };
@@ -37,7 +37,8 @@
 
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
-        //var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json"; // Эта ссылка вернет данные, но поток нужно проксировать
+        // STREAM_URL_TEMPLATE не используется напрямую для плеера, только для получения данных о потоках
+        // var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
 
         this.fetchCatalog = function () {
@@ -84,7 +85,7 @@
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
-                    // Теперь вызываем новую функцию, которая сначала получает данные о потоке, а потом запускает плеер через прокси
+                    // Вызываем функцию для получения данных о потоке и запуска через прокси Lampac
                     _this.playStream(meta.id, meta);
                 });
 
@@ -98,9 +99,10 @@
             _this.activity.toggle();
         };
 
-        // *** НОВАЯ ФУНКЦИЯ для получения данных о потоке и запуска через прокси ***
+        // Функция для получения данных о потоке с API и запуска воспроизведения через прокси Lampac
         this.playStream = function(id, meta) {
             var _this = this;
+             // URL для получения данных о потоках из исходного API
              var streamDataUrl = API_BASE_URL + "/stream/movie/" + id + ".json";
 
             _this.activity.loader(true); // Показываем загрузчик
@@ -112,20 +114,19 @@
                     console.log("Stream Data:", streamData);
 
                     if (streamData && streamData.streams && streamData.streams.length > 0) {
-                        var streamToPlay = streamData.streams[0]; // Берем первый поток
+                        // Берем первый поток из списка
+                        var streamToPlay = streamData.streams[0];
 
                         if (streamToPlay.url) {
-                            // *** Маршрутизируем URL потока через локальный прокси ***
-                            // Предполагаем, что прокси принимает URL как параметр "url"
-                            var proxiedStreamUrl = Defined.localhost + 'stream?url=' + encodeURIComponent(streamToPlay.url); // Это предположение
+                            // *** Маршрутизируем URL потока через локальный прокси Lampac ***
+                            // Используем предполагаемый формат URL прокси: адрес Lampac + '/stream?url=' + закодированный URL потока
+                            var proxiedStreamUrl = Defined.localhost + 'stream?url=' + encodeURIComponent(streamToPlay.url);
 
                             var playerObject = {
-                                title: meta.name || meta.title || 'Без названия',
-                                url: proxiedStreamUrl, // Используем проксированную ссылку
-                                poster: meta.poster || meta.background,
-                                behaviorHints: {
-                                     proxyHeaders: true // Сохраняем эту подсказку, она может быть нужна
-                                }
+                                title: meta.name || meta.title || 'Без названия', // Название из метаданных
+                                url: proxiedStreamUrl, // Используем проксированную ссылку для плеера
+                                poster: meta.poster || meta.background, // Постер из метаданных
+                                // behaviorHints: { proxyHeaders: true } - Убрано, т.к. предполагается, что прокси сам решит проблемы с заголовками
                             };
 
                             console.log("Launching player with proxied URL:", playerObject);
@@ -133,13 +134,14 @@
                             Lampa.Player.playlist([playerObject]);
 
                             if (meta) {
+                                // Добавляем в историю Lampac
                                 const historyMeta = {
                                     id: meta.id,
                                     title: meta.name || meta.title,
                                     poster: meta.poster || meta.background,
-                                    runtime: meta.runtime,
-                                    year: meta.year,
-                                    original_name: meta.original_name
+                                    runtime: meta.runtime, // если доступно
+                                    year: meta.year, // если доступно
+                                    original_name: meta.original_name // если доступно
                                 };
                                 Lampa.Favorite.add('history', historyMeta, 100);
                             }
@@ -167,7 +169,6 @@
                 }
             );
         };
-        // *** КОНЕЦ НОВОЙ ФУНКЦИИ ***
 
 
         this.empty = function (msg) {
