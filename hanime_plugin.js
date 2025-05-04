@@ -1,20 +1,19 @@
 (function () {
     'use strict';
 
-    function fetchWithCorsProxy(url, callback, fail, options = {}) {
-        const proxiedUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-        Lampa.Reguest().native(proxiedUrl, callback, fail, false, options);
+    // Функция для проксирования URL через allorigins.win
+    function proxyUrl(url) {
+        return `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&disableCache=true`;
     }
 
     function HanimeCard(data) {
         var cardTemplate = Lampa.Template.get('hanime-card', {
             id: data.id,
-            img: data.poster,
+            img: proxyUrl(data.poster), // Проксируем постер
             title: data.name,
         });
 
         var cardElement = $(cardTemplate);
-
         cardElement.addClass('selector');
 
         this.render = function () {
@@ -36,32 +35,36 @@
         var last;
 
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
-        var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
-        var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
-        var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
+        var CATALOG_URL = proxyUrl(API_BASE_URL + "/catalog/movie/newset.json");
 
         this.fetchCatalog = function () {
             var _this = this;
             _this.activity.loader(true);
 
             network.clear();
-            fetchWithCorsProxy(CATALOG_URL,
+            network.native(CATALOG_URL,
                 function (data) {
-                    if (data && data.metas && Array.isArray(data.metas)) {
-                        if (data.metas.length > 0) {
-                            _this.build(data.metas);
+                    try {
+                        if (data && data.contents) {
+                            const parsed = JSON.parse(data.contents);
+                            if (parsed.metas && Array.isArray(parsed.metas)) {
+                                _this.build(parsed.metas);
+                            } else {
+                                _this.empty("Некорректный формат данных");
+                            }
                         } else {
-                            _this.empty("Каталог пуст.");
+                            _this.empty("Пустой ответ от сервера");
                         }
-                    } else {
-                        _this.empty("Неверный формат данных от API.");
-                        console.error("Hanime Plugin: Invalid data format", data);
+                    } catch (e) {
+                        _this.empty("Ошибка обработки данных");
+                        console.error("Parsing error:", e);
                     }
                 },
                 function (errorStatus, errorText) {
-                    _this.empty("Не удалось загрузить каталог. Статус: " + errorStatus);
-                    console.error("Hanime Plugin: Failed to load catalog", errorStatus, errorText);
+                    _this.empty("Ошибка загрузки: " + errorStatus);
+                    console.error("Request failed:", errorStatus, errorText);
                 },
+                false,
                 {
                     dataType: 'json',
                     timeout: 15000
@@ -82,7 +85,6 @@
                     active = items.indexOf(card);
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
-                    console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta);
                 });
 
@@ -98,64 +100,55 @@
 
         this.fetchStreamAndMeta = function (id, meta) {
             var _this = this;
-            var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
+            var streamUrl = proxyUrl(API_BASE_URL + `/stream/movie/${id}.json`);
+            var metaUrl = proxyUrl(API_BASE_URL + `/meta/movie/${id}.json`);
 
             _this.activity.loader(true);
 
             Promise.all([
-                new Promise((resolve, reject) => {
-                    fetchWithCorsProxy(streamUrl, resolve, reject, { dataType: 'json', timeout: 10000 });
-                }),
-                meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
-                    fetchWithCorsProxy(metaUrl, resolve, reject, { dataType: 'json', timeout: 10000 });
-                })
-            ]).then(([streamData, metaDataResponse]) => {
+                network.timeout(10000, streamUrl),
+                meta ? Promise.resolve({ contents: JSON.stringify({ meta: meta }) }) : network.timeout(10000, metaUrl)
+            ]).then(responses => {
+                const [streamRes, metaRes] = responses;
+                
+                // Обработка данных из прокси
+                const streamData = JSON.parse(streamRes.contents);
+                const metaData = JSON.parse(metaRes.contents).meta || meta;
+
                 _this.activity.loader(false);
 
-                const fullMetaData = metaDataResponse.meta || metaDataResponse;
+                if (streamData.streams?.length > 0) {
+                    const stream = streamData.streams[0];
+                    const poster = proxyUrl(metaData.poster);
 
-                console.log("Stream Data:", streamData);
-                console.log("Full Meta Data:", fullMetaData);
-
-                if (streamData && streamData.streams && streamData.streams.length > 0) {
-                    var streamToPlay = streamData.streams[0];
-
-                    var playerObject = {
-                        title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                        url: streamToPlay.url,
-                        poster: fullMetaData.poster || fullMetaData.background,
+                    const playerData = {
+                        title: metaData.name,
+                        url: stream.url,
+                        poster: poster,
+                        info: metaData.description ? `
+                            <div class="player-metadata__description">
+                                ${metaData.description}
+                            </div>
+                        ` : ''
                     };
 
-                    if (playerObject.url) {
-                        console.log("Launching player with:", playerObject);
-                        Lampa.Player.play(playerObject);
-                        Lampa.Player.playlist([playerObject]);
+                    Lampa.Player.play(playerData);
+                    Lampa.Player.playlist([playerData]);
 
-                        if (fullMetaData) {
-                            const historyMeta = {
-                                id: fullMetaData.id,
-                                title: fullMetaData.name || fullMetaData.title,
-                                poster: fullMetaData.poster || fullMetaData.background,
-                                runtime: fullMetaData.runtime,
-                                year: fullMetaData.year,
-                                original_name: fullMetaData.original_name
-                            };
-                            Lampa.Favorite.add('history', historyMeta, 100);
-                        }
-                    } else {
-                        Lampa.Noty.show('Не удалось получить ссылку на поток.');
-                        console.error("Hanime Plugin: No valid stream URL found in stream data:", streamData);
-                    }
+                    Lampa.Favorite.add('history', {
+                        id: metaData.id,
+                        title: metaData.name,
+                        poster: poster,
+                        description: metaData.description,
+                        year: metaData.year
+                    }, 100);
                 } else {
-                    Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                    console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
+                    Lampa.Noty.show('Видео недоступно');
                 }
-
             }).catch(error => {
                 _this.activity.loader(false);
-                console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
-                Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
+                Lampa.Noty.show('Ошибка загрузки: ' + (error.message || error));
+                console.error('Fetch error:', error);
             });
         };
 
@@ -181,18 +174,16 @@
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 left: function () {
-                    if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
+                    Navigator.canmove('left') ? Navigator.move('left') : Lampa.Controller.toggle('menu');
                 },
                 right: function () {
-                    if (Navigator.canmove('right')) Navigator.move('right');
+                    Navigator.canmove('right') && Navigator.move('right');
                 },
                 up: function () {
-                    if (Navigator.canmove('up')) Navigator.move('up');
-                    else Lampa.Controller.toggle('head');
+                    Navigator.canmove('up') ? Navigator.move('up') : Lampa.Controller.toggle('head');
                 },
                 down: function () {
-                    if (Navigator.canmove('down')) Navigator.move('down');
+                    Navigator.canmove('down') && Navigator.move('down');
                 },
                 back: this.back
             });
@@ -201,127 +192,92 @@
 
         this.pause = function () {};
         this.stop = function () {};
-
-        this.render = function () {
-            return html;
-        };
-
+        this.render = function () { return html; };
         this.destroy = function () {
             network.clear();
             Lampa.Arrays.destroy(items);
             scroll.destroy();
             html.remove();
-            items = null;
-            network = null;
-            scroll = null;
-            html = null;
-            body = null;
-            last = null;
         };
-
-        this.back = function () {
-            Lampa.Activity.backward();
-        };
+        this.back = function () { Lampa.Activity.backward(); };
     }
 
     function startPlugin() {
         if (window.plugin_hanime_catalog_ready) return;
-
         window.plugin_hanime_catalog_ready = true;
 
-        var style = `
-            .hanime-catalog__body.category-full { justify-content: space-around; }
+        // Стили
+        const style = `
+            .hanime-catalog__body { padding: 20px; }
             .hanime-card {
                 width: 185px;
-                margin-bottom: 1.5em;
-                border-radius: 0.5em;
+                margin: 10px;
+                border-radius: 8px;
                 overflow: hidden;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-                position: relative;
-                box-sizing: border-box;
+                background: #2a2a2a;
+                transition: transform 0.2s;
             }
-            .hanime-card.selector:focus {
-                transform: scale(1.05);
-                box-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
-                z-index: 5;
-                border: 3px solid rgba(255, 255, 255, 0.5);
-            }
-            .hanime-card.selector.focus:not(.native) {
-                border-color: transparent;
-                outline: none;
-            }
+            .hanime-card:hover { transform: scale(1.05); }
             .hanime-card__view {
-                position: relative;
                 height: 270px;
-                background-color: rgba(255,255,255,0.05);
-                border-radius: 0.5em;
-                overflow: hidden;
+                background: #1a1a1a;
+                position: relative;
             }
             .hanime-card__img {
-                position: absolute;
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
-                border-radius: 0.5em;
             }
             .hanime-card__title {
-                margin-top: 0.5em;
-                padding: 0 0.5em;
-                font-size: 1em;
-                font-weight: bold;
+                padding: 10px;
+                text-align: center;
+                color: #fff;
+                font-size: 14px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                text-align: center;
-                color: #fff;
             }
-            .hanime-card__description { display: none; }
-            .menu__ico svg { width: 1.5em; height: 1.5em; }
         `;
         Lampa.Template.add('hanime-style', `<style>${style}</style>`);
+        $('head').append(Lampa.Template.get('hanime-style', {}, true));
 
+        // Шаблон карточки
         Lampa.Template.add('hanime-card', `
             <div class="hanime-card card layer--visible layer--render">
                 <div class="hanime-card__view">
-                    <img src="{img}" class="hanime-card__img" alt="{title}" loading="lazy" />
+                    <img src="{img}" class="hanime-card__img" alt="{title}">
                 </div>
                 <div class="hanime-card__title">{title}</div>
             </div>
         `);
 
+        // Регистрация компонента
         Lampa.Component.add('hanime_catalog', HanimeComponent);
 
-        function addMenuItem() {
-            var menu_item = $(`
-                <li class="menu__item selector">
-                    <div class="menu__ico">
-                        <svg fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z"></path>
-                        </svg>
-                    </div>
-                    <div class="menu__text">Hanime Catalog</div>
-                </li>
-            `);
-            menu_item.on('hover:enter', function () {
-                Lampa.Activity.push({
-                    url: '',
-                    title: 'Hanime Catalog',
-                    component: 'hanime_catalog',
-                    page: 1
-                });
+        // Добавление пункта меню
+        const menuItem = $(`
+            <li class="menu__item selector">
+                <div class="menu__ico">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                    </svg>
+                </div>
+                <div class="menu__text">Hanime</div>
+            </li>
+        `).on('hover:enter', () => {
+            Lampa.Activity.push({
+                url: '',
+                title: 'Hanime',
+                component: 'hanime_catalog',
+                page: 1
             });
-            $('.menu .menu__list').eq(0).append(menu_item);
-        }
-
-        $('head').append(Lampa.Template.get('hanime-style', {}, true));
+        });
 
         if (window.appready) {
-            addMenuItem();
+            $('.menu .menu__list').first().append(menuItem);
         } else {
-            Lampa.Listener.follow('app', function (e) {
-                if (e.type === 'ready') {
-                    addMenuItem();
-                }
+            Lampa.Listener.follow('app', e => {
+                if (e.type === 'ready') $('.menu .menu__list').first().append(menuItem);
             });
         }
     }
