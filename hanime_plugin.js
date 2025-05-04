@@ -1,6 +1,10 @@
 (function () {
     'use strict';
 
+    // Флаг для проверки, были ли добавлены стили и шаблоны
+    // Используем другой флаг, чтобы не конфликтовать с window.plugin_hanime_catalog_ready
+    window.hanime_templates_added = false;
+
     function HanimeCard(data) {
         var cardTemplate = Lampa.Template.get('hanime-card', {
             id: data.id,
@@ -46,6 +50,7 @@
         var currentCatalogKey = componentObject.catalog || 'Newset'; // Берем из параметров компонента или дефолт
 
         // --- Добавлено: Адрес вашего прокси сервера ---
+        // Убедитесь, что этот адрес соответствует PROXY_EXTERNAL_BASE_URL в вашем Node.js прокси
         var PROXY_BASE_URL = "http://77.91.78.5:3000";
         // ---------------------------------------------
 
@@ -62,9 +67,9 @@
                     if (data && data.metas && Array.isArray(data.metas)) {
                          if (data.metas.length > 0) {
                             // Очищаем предыдущие элементы, если это не подгрузка следующей страницы (здесь пагинации нет в API, но оставим на будущее)
-                            if (componentObject.page === 1) {
-                                _this.clearItems(); // Очищаем список при загрузке нового каталога/первой страницы
-                            }
+                            // Пока API не поддерживает пагинацию, всегда очищаем и загружаем весь каталог
+                            _this.clearItems(); // Очищаем список при загрузке нового каталога/первой страницы
+
                             _this.build(data.metas);
                          } else {
                             _this.empty("Каталог пуст.");
@@ -90,18 +95,21 @@
 
         // Метод для очистки текущих элементов списка
         this.clearItems = function() {
+             console.log("Hanime Plugin: Clearing items.");
              items.forEach(function(item) {
                  item.destroy();
              });
              items = [];
              body.empty();
-             scroll.minus(); // Сбрасываем скролл
+             // scroll.minus(); // Сброс скролла может понадобиться, если пагинация будет реализована
         };
 
 
         this.build = function (result) {
             var _this = this;
-            // scroll.minus(); // Сбрасываем минус скролла перед добавлением новых элементов
+            // scroll.minus(); // Сбрасываем минус скролла перед добавлением новых элементов (если нужна пагинация)
+
+            console.log("Hanime Plugin: Building catalog with", result.length, "items.");
 
             // Put Data
             result.forEach(function (meta) {
@@ -122,28 +130,25 @@
             });
 
             // Put blank (структура Lampa)
-            if (html.find('.hanime-head').length === 0) { // Добавляем заголовок только если его нет
+            // Добавляем заголовок и body в scroll только один раз
+            if (scroll.render().find('.hanime-head').length === 0) {
                  scroll.append(head);
             }
-             if (html.find('.hanime-catalog__body').length === 0) { // Добавляем body только если его нет
+             if (scroll.render().find('.hanime-catalog__body').length === 0) {
                 scroll.append(body);
-            } else {
-                 // Если body уже есть, просто обновляем его содержимое через scroll.append,
-                 // который добавит новые элементы и обновит внутреннюю структуру scroll
-                 scroll.append(body); // Это обновит body внутри scroll
             }
 
+            // Обновляем scroll после добавления новых элементов
+            scroll.update(); // Обновляем scroll, чтобы он учел новые элементы
 
             // Put all in page
             if (html.children().length === 0) { // Добавляем scroll в HTML только один раз
                  html.append(scroll.render(true));
-            } else {
-                 scroll.render(true); // Просто обновляем внутреннее состояние scroll
             }
-
 
             _this.activity.loader(false);
             _this.activity.toggle();
+            console.log("Hanime Plugin: Catalog built.");
         };
 
          // Метод для добавления функционала выбора каталога к заголовку
@@ -170,7 +175,7 @@
                          if (item.key !== currentCatalogKey) {
                              currentCatalogKey = item.key;
                              componentObject.catalog = currentCatalogKey; // Сохраняем выбор в параметрах компонента
-                             componentObject.page = 1; // Сбрасываем страницу
+                             componentObject.page = 1; // Сбрасываем страницу (важно, если бы была пагинация)
                              _this.fetchCatalog(); // Загружаем новый каталог
                          }
                          Lampa.Controller.toggle('content'); // Возвращаемся к контенту после выбора
@@ -178,13 +183,15 @@
                  });
                  Lampa.Controller.toggle('select'); // Переключаемся на контроллер выбора
              });
+             console.log("Hanime Plugin: Catalog select setup.");
         };
 
 
         this.fetchStreamAndMeta = function (id, meta) {
             var _this = this;
-            var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            var metaUrl = META_URL_TEMPLATE.replace('{id}', id); // В API Hanime meta и stream могут приходить вместе
+            // URL для получения информации о потоке и метаданных
+            var streamUrl = API_BASE_URL + "/stream/movie/" + id + ".json";
+            var metaUrl = API_BASE_URL + "/meta/movie/" + id + ".json"; // В API Hanime meta и stream могут приходить вместе
 
             _this.activity.loader(true);
 
@@ -204,16 +211,19 @@
                  // Оба запроса выполнены успешно
                  _this.activity.loader(false);
 
-                 const fullMetaData = metaDataResponse.meta || metaDataResponse; // Берем мету либо из ответа, либо из переданного объекта
+                 // Объединяем метаданные из разных источников (переданные изначально и полученные по metaUrl)
+                 // Предполагаем, что metaDataResponse.meta имеет приоритет, если существует
+                 const fullMetaData = metaDataResponse.meta || metaDataResponse || meta;
+
 
                  console.log("Stream Data:", streamData);
                  console.log("Full Meta Data:", fullMetaData);
 
                  if (streamData && streamData.streams && streamData.streams.length > 0) {
-                     var streamToPlay = streamData.streams[0]; // Берем первый поток
+                     var streamToPlay = streamData.streams[0]; // Берем первый поток из списка streamData.streams
 
                      // --- Использование прокси для URL потока (логика из предыдущих шагов) ---
-                     var finalStreamUrl = streamToPlay.url;
+                     var finalStreamUrl = streamToPlay.url; // Берем оригинальный URL потока
 
                      // Проверяем, является ли URL потока тем, который вызывает проблему CORS (на highwinds-cdn.com)
                      // Если да, оборачиваем его прокси
@@ -228,7 +238,7 @@
                           }
                      } catch (e) {
                          console.error("Hanime Plugin: Failed to parse or proxy stream URL", e);
-                         // В случае ошибки парсинга URL, продолжаем использовать оригинальный URL
+                         // В случае ошибки парсинга URL, продолжаем использовать оригинальный URL как есть
                          finalStreamUrl = streamToPlay.url;
                      }
                      // -----------------------------------------------------------------------
@@ -254,11 +264,14 @@
                                     title: fullMetaData.name || fullMetaData.title || 'Без названия',
                                     poster: fullMetaData.poster || fullMetaData.background,
                                     // Добавьте другие доступные поля из fullMetaData, если они есть и нужны для истории
-                                    runtime: fullMetaData.runtime, // Пример: если API предоставляет
-                                    year: fullMetaData.year,     // Пример: если API предоставляет
-                                    original_name: fullMetaData.original_name // Пример: если API предоставляет
+                                    // runtime: fullMetaData.runtime, // Пример: если API предоставляет
+                                    // year: fullMetaData.year,     // Пример: если API предоставляет
+                                    // original_name: fullMetaData.original_name // Пример: если API предоставляет
                                 };
                                 Lampa.Favorite.add('history', historyMeta, 100); // Добавляем в историю Lampa
+                                console.log("Hanime Plugin: Added to history", historyMeta);
+                          } else {
+                              console.warn("Hanime Plugin: Skipping history add, fullMetaData or ID missing.", fullMetaData);
                           }
 
                      } else {
@@ -277,20 +290,34 @@
                  // Обработка ошибок запросов stream/meta
                  _this.activity.loader(false);
                  console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
-                 Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
+                 // Проверяем, является ли ошибка объектом с message
+                 var errorMessage = 'Неизвестная ошибка';
+                 if (error instanceof Error) {
+                     errorMessage = error.message;
+                 } else if (typeof error === 'string') {
+                     errorMessage = error;
+                 } else if (error && typeof error === 'object' && error.statusText) {
+                     errorMessage = error.statusText; // Ошибка из network.native
+                 }
+
+                 Lampa.Noty.show('Ошибка загрузки деталей: ' + errorMessage);
              });
         };
 
 
         this.empty = function (msg) {
+            console.log("Hanime Plugin: Displaying empty state:", msg);
             var empty = new Lampa.Empty({ message: msg });
             html.empty().append(empty.render(true)); // Очищаем и добавляем сообщение "пусто"
             this.activity.loader(false);
             this.activity.toggle();
-            this.start = empty.start; // Возможно, нужно назначить start на метод empty
+            // Назначаем start на метод empty, чтобы при фокусе на сообщении "пусто"
+            // можно было вернуться к управлению активностью.
+             this.start = empty.start;
         };
 
         this.create = function () {
+            console.log("Hanime Plugin: Creating component.");
             this.activity.loader(true);
              this.setupCatalogSelect(); // Настраиваем выбор каталога в заголовке
             this.fetchCatalog(); // Загружаем данные
@@ -300,41 +327,80 @@
             // Проверяем, активен ли наш компонент
             if (Lampa.Activity.active().activity !== this.activity) return;
 
+            console.log("Hanime Plugin: Starting component.");
+
             // Настраиваем контроллер Lampa для навигации
             Lampa.Controller.add('content', {
                 toggle: function () {
                     // Устанавливаем коллекцию элементов для навигации
+                    // Если last не установлен (например, при первой загрузке), фокусируемся на первом элементе scroll (который должен быть head)
+                    var initialFocus = last || scroll.render().find('.simple-button').first()[0];
                     Lampa.Controller.collectionSet(scroll.render());
-                    // Фокусируемся на последнем активном элементе или первом
-                    Lampa.Controller.collectionFocus(last || false, scroll.render());
+                    Lampa.Controller.collectionFocus(initialFocus, scroll.render());
+                    console.log("Hanime Plugin: Controller toggle. Focus on:", initialFocus);
                 },
                 left: function () {
                     // Обработка стрелки влево
-                    if (Navigator.canmove('left')) Navigator.move('left'); // Если можно двигаться влево в коллекции
-                    else Lampa.Controller.toggle('menu'); // Иначе, переключаемся на меню
+                    if (Navigator.canmove('left')) {
+                        Navigator.move('left'); // Если можно двигаться влево в коллекции
+                    } else {
+                         // Если слева в коллекции ничего нет, и фокус не на голове,
+                         // пытаемся переключиться на меню.
+                        if (!Lampa.Controller.own(head[0])) { // Проверяем, не находится ли фокус уже на голове
+                             Lampa.Controller.toggle('menu'); // Иначе, переключаемся на меню
+                        } else {
+                             // Если фокус на голове, и движения влево нет в голове,
+                             // возможно, ничего не делаем или пытаемся переключиться на меню.
+                             // Для кнопок в голове Navigator.canmove('left') должен работать.
+                             Lampa.Controller.toggle('menu'); // По умолчанию, переключаемся на меню
+                        }
+                    }
                 },
                 right: function () {
                      // Обработка стрелки вправо
-                    if (Navigator.canmove('right')) Navigator.move('right'); // Если можно двигаться вправо
+                    Navigator.move('right'); // Двигаемся вправо в коллекции
                      // Здесь нет перехода куда-то еще, так как нет боковой панели справа
                 },
                 up: function () {
                     // Обработка стрелки вверх
-                    if (Navigator.canmove('up')) Navigator.move('up'); // Если можно двигаться вверх в коллекции
-                    else Lampa.Controller.toggle('head'); // Иначе, переключаемся на заголовок/верхнюю панель
+                    if (Navigator.canmove('up')) {
+                         Navigator.move('up'); // Если можно двигаться вверх в коллекции
+                    } else {
+                         // Если сверху в коллекции ничего нет, переключаемся на заголовок
+                         Lampa.Controller.toggle('head');
+                    }
                 },
                 down: function () {
                      // Обработка стрелки вниз
-                    if (Navigator.canmove('down')) Navigator.move('down'); // Если можно двигаться вниз
+                    Navigator.move('down'); // Двигаемся вниз в коллекции
                 },
                 back: this.back // Обработка кнопки "назад"
             });
 
-             // Переключаемся на наш контроллер контента
-            Lampa.Controller.toggle('content');
+             // Добавляем контроллер для заголовка
+             Lampa.Controller.add('head', {
+                 toggle: function() {
+                      Lampa.Controller.collectionSet(head); // Коллекция - только элементы заголовка
+                      Lampa.Controller.collectionFocus(head.find('.simple-button').first()[0], head); // Фокус на первой кнопке
+                      console.log("Hanime Plugin: Head controller toggle.");
+                 },
+                 left: function() {
+                      if (Navigator.canmove('left')) Navigator.move('left'); // Двигаемся влево в заголовке
+                      else Lampa.Controller.toggle('menu'); // Переключаемся на меню
+                 },
+                 right: function() {
+                      Navigator.move('right'); // Двигаемся вправо в заголовке
+                 },
+                 down: function() {
+                      Lampa.Controller.toggle('content'); // Переключаемся на контент
+                 },
+                 back: this.back // Кнопка назад в заголовке
+             });
 
-             // Опционально: установить фокус на заголовок при входе на страницу
-            // Lampa.Controller.focus(head); // Может потребовать доработки логики focus
+
+             // Переключаемся на контроллер контента или заголовка при старте
+            Lampa.Controller.toggle('content'); // Начинаем с контента
+
         };
 
         // Методы жизненного цикла компонента Lampa
@@ -348,7 +414,8 @@
 
         this.render = function () {
             // Возвращаем основной HTML элемент компонента
-            return html;
+            // true означает вернуть DOM элемент, false - jQuery объект (по умолчанию)
+            return html; // Возвращаем jQuery объект
         };
 
         this.destroy = function () {
@@ -358,6 +425,10 @@
             Lampa.Arrays.destroy(items); // Уничтожаем элементы карточек
             scroll.destroy(); // Уничтожаем скролл
             html.remove(); // Удаляем HTML из DOM
+            // Удаляем контроллеры
+             Lampa.Controller.remove('content');
+             Lampa.Controller.remove('head');
+
             // Обнуляем ссылки для сборщика мусора
             items = null;
             network = null;
@@ -370,11 +441,17 @@
 
         this.back = function () {
              console.log("Hanime Plugin: Going back");
-            // Возвращаемся к предыдущей активности Lampa
-            Lampa.Activity.backward();
+            // Проверяем, находимся ли мы на странице фильтров (если она была бы реализована)
+            // или просто возвращаемся назад в истории активностей Lampa
+             // Если находимся в меню выбора каталога, он обрабатывает back сам.
+             // Если в контроллере content или head, возвращаемся назад.
+             Lampa.Activity.backward();
+
         };
 
         // Добавляем компонент поиска (минимальный вариант, без интеграции с TMDB)
+         // Этот метод может быть вызван из Lampa, если плагин зарегистрирует функцию search
+         // Например, через Lampa.Plugin.add_search(manifest.component, this.search);
          this.search = function(query) {
              console.log("Hanime Plugin: Search initiated with query:", query);
              // API Hanime не поддерживает поиск через каталог endpoint.
@@ -384,56 +461,33 @@
              Lampa.Noty.show('Поиск по API Hanime не поддерживается в этом плагине.');
              // Или можно было бы сделать запрос к API, если endpoint существует
              // Например: network.native(API_BASE_URL + '/search?query=' + encodeURIComponent(query), ...);
+
+             // Важно: Если поиск открывает новую активность или переключает контроллер,
+             // нужно убедиться, что текущая активность ставится на паузу и восстанавливается при возврате.
+             // В данном простом случае, мы остаемся на текущей странице.
          };
 
 
     }
 
-    // Функция для добавления пункта в главное меню Lampa
-    function addMenuItem() {
-        // Проверяем, добавлен ли уже пункт меню, чтобы избежать дублирования
-        if ($('.menu .menu__item .menu__text:contains("Hanime Catalog")').length > 0) {
-             console.log("Hanime Plugin: Menu item already exists.");
-             return;
-        }
-
-        // Создаем HTML для пункта меню
-        var menu_item = $(`
-            <li class="menu__item selector">
-                <div class="menu__ico">
-                    <svg fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"></path>
-                    </svg>
-                </div>
-                <div class="menu__text">Hanime Catalog</div>
-            </li>
-        `);
-
-        // Обработчик события при выборе пункта меню
-        menu_item.on('hover:enter', function () {
-            console.log("Hanime Plugin: Menu item selected, pushing activity.");
-            // Добавляем новую активность в Lampa с нашим компонентом
-            Lampa.Activity.push({
-                url: '', // URL не используется компонентом каталога напрямую
-                title: 'Hanime Catalog', // Заголовок активности
-                component: 'hanime_catalog', // Имя нашего компонента
-                page: 1, // Номер страницы (для потенциальной пагинации)
-                catalog: 'Newset' // Параметр для компонента, указывающий, какой каталог загрузить по умолчанию
-            });
-        });
-
-        // Находим список меню и добавляем наш пункт
-        $('.menu .menu__list').eq(0).append(menu_item);
-        console.log("Hanime Plugin: Menu item added.");
-    }
-
     // Функция для добавления пользовательских стилей и шаблонов
     function addTemplatesAndStyles() {
-         // Проверяем, добавлены ли уже стили и шаблоны
-         if (Lampa.Template.get('hanime-style') || Lampa.Template.get('hanime-card')) {
-             console.log("Hanime Plugin: Templates and styles already exist.");
+         // Проверяем, добавлены ли уже стили и шаблоны с помощью нашего флага
+         if (window.hanime_templates_added) {
+             console.log("Hanime Plugin: Templates and styles already added (via flag).");
              return;
          }
+         // Дополнительная проверка через Lampa.Template.get (может вызвать ошибку, если add не сработал)
+         // try {
+         //      if (Lampa.Template.get('hanime-style') || Lampa.Template.get('hanime-card')) {
+         //          console.log("Hanime Plugin: Templates and styles already exist (via get).");
+         //          window.hanime_templates_added = true; // Устанавливаем флаг на всякий случай
+         //          return;
+         //      }
+         // } catch (e) {
+         //      // Template not found is expected here if not added yet
+         // }
+
 
          // Добавляем CSS стили
          var style = `
@@ -526,10 +580,18 @@
                    height: 1.5em;
              }
          `;
+         // Добавляем стиль как шаблон в Lampa
          Lampa.Template.add('hanime-style', `<style>${style}</style>`);
 
+         // --- Добавляем стиль в <head> документа ---
+         // Используем Lampa.Template.get с true, чтобы получить HTML-элемент <style>
+         // Аппендим его в head документа
+         $('head').append(Lampa.Template.get('hanime-style', {}, true));
+         // ----------------------------------------
+
+
          // Добавляем HTML шаблон для карточки
-         // Адаптирован на основе вашего shikimori-карточки, но использует данные из API Hanime
+         // Адаптирован на основе вашей структуры, но использует имена полей из примера ответа API Hanime
          var cardTemplate = `
              <div class="hanime-card card selector layer--visible layer--render">
                  <div class="hanime-card__view">
@@ -540,6 +602,8 @@
          `;
          Lampa.Template.add('hanime-card', cardTemplate);
 
+         // Устанавливаем флаг, что шаблоны добавлены
+         window.hanime_templates_added = true;
          console.log("Hanime Plugin: Templates and styles added.");
     }
 
@@ -555,7 +619,7 @@
         window.plugin_hanime_catalog_ready = true;
         console.log("Hanime Plugin: Starting initialization.");
 
-        // Добавляем стили и шаблоны
+        // Добавляем стили и шаблоны, и аппендим их в head
         addTemplatesAndStyles();
 
         // Регистрируем наш компонент в Lampa
@@ -563,6 +627,7 @@
         console.log("Hanime Plugin: Component 'hanime_catalog' added.");
 
         // Добавляем пункт меню после готовности приложения Lampa
+        // (Lampa должна быть полностью загружена, чтобы DOM меню был доступен)
         if (window.appready) {
              console.log("Hanime Plugin: App is ready, adding menu item.");
              addMenuItem();
@@ -579,6 +644,17 @@
     }
 
     // Запускаем инициализацию плагина
-    startPlugin();
+    // Проверяем на всякий случай, чтобы не запустить инициализацию несколько раз
+    if (!window.plugin_hanime_catalog_ready) {
+        startPlugin();
+    } else {
+         console.log("Hanime Plugin: Skipping startPlugin, already ready.");
+         // Если плагин уже был помечен как готовый, но стили/шаблоны могли быть потеряны
+         // (хотя флаг hanime_templates_added должен предотвратить это),
+         // можно попробовать добавить их снова, но это скорее обходной путь для проблем в Lampa.
+         // addTemplatesAndStyles(); // Опционально: попробовать добавить стили/шаблоны снова
+         // addMenuItem(); // Опционально: попробовать добавить меню снова
+    }
+
 
 })();
