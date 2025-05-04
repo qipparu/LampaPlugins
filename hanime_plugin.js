@@ -2,7 +2,7 @@
   'use strict';
 
   var standardLampaCardTemplate = `
-    <div class="card selector layer--visible layer--render card--loaded" tabindex="0">
+    <div class="card selector layer--visible layer--render card--loaded">
       <div class="card__view">
         <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
         <div class="card__icons"><div class="card__icons-inner"></div></div>
@@ -119,8 +119,6 @@
             .append(sectionHeader)
             .append(scrollContainer);
 
-          const cardsContainer = scrollContainer.find('.items-cards');
-
           data.forEach(meta => {
             const card = new HanimeCard(meta);
             const cardElement = card.render();
@@ -132,12 +130,10 @@
               _this.fetchStreamAndMeta(meta.id, meta);
             });
 
-            cardsContainer.append(cardElement);
+            scrollContainer.find('.items-cards').append(cardElement);
             items.push(card);
           });
 
-          horizontalScroll.append(itemsLine);
-          horizontalScroll.update();
           body.append(itemsLine);
         }
       });
