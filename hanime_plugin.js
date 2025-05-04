@@ -144,7 +144,25 @@
             var _this = this;
             console.log("Hanime Plugin: Building catalog with", result.length, "items.");
 
-            // Проходим по каждому элементу метаданных в результате
+            // --- ИЗМЕНЕНО: Аппендим head и body в scroll *до того*, как наполняем body карточками ---
+            // Это делается только один раз при первом вызове build
+            if (scroll.render().find('.hanime-head').length === 0) {
+                 scroll.append(head);
+                 console.log("Hanime Plugin: Appended head to scroll.");
+            }
+            if (scroll.render().find('.hanime-catalog__body').length === 0) {
+                 scroll.append(body);
+                 console.log("Hanime Plugin: Appended body to scroll.");
+            }
+            // Аппендим сам scroll в основной HTML компонента, если он еще не добавлен
+            if (html.children().length === 0) {
+                html.append(scroll.render(true));
+                console.log("Hanime Plugin: Appended scroll to html.");
+            }
+            // ---------------------------------------------------------------------------------------
+
+
+            // Проходим по каждому элементу метаданных в результате и создаем карточки
             result.forEach(function (meta) {
                 var card = new HanimeCard(meta); // Создаем объект карточки
                 var cardElement = card.render(); // Получаем DOM элемент карточки (jQuery объект)
@@ -153,32 +171,25 @@
                 cardElement.on('hover:focus', function () {
                     last = cardElement[0]; // Сохраняем ссылку на нативный DOM элемент при фокусе
                     active = items.indexOf(card); // Сохраняем индекс активной карточки
-                    // --- УДАЛЕНО: Вызов scroll.update(cardElement[0], true) из обработчика focus ---
-                    // Этот вызов может быть причиной ошибки "getBoundingClientRect"
-                    // Lampa Controller/Navigator + Scroll должны сами управлять скроллом при фокусе
-                    // ---------------------------------------------------------------------------
-                    // Lampa Scroll автоматически скроллит к элементу, если Controller коллекция связана со Scroll
+                    // Вызов scroll.update из обработчика focus УДАЛЕН в предыдущей версии.
+                    // Полагаемся на Lampa Controller/Navigator/Scroll для автоматического скролла.
                 }).on('hover:enter', function () {
                     // При нажатии Enter
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta); // Загружаем стрим и мету для выбранного аниме
                 });
 
-                body.append(cardElement); // Добавляем DOM элемент карточки в контейнер body
+                // Добавляем DOM элемент карточки в контейнер body (который УЖЕ добавлен в scroll)
+                body.append(cardElement);
                 items.push(card); // Добавляем объект карточки в массив items
             });
 
-            // Добавляем заголовок и контейнер body в scroll, если они еще не добавлены
-            // scroll.append добавляет элементы, которыми будет управлять scroll, и обновляет внутреннюю структуру scroll
-            if (scroll.render().find('.hanime-head').length === 0) { scroll.append(head); }
-             if (scroll.render().find('.hanime-catalog__body').length === 0) { scroll.append(body); }
-
             // --- ДОБАВЛЕНО: Задержка перед финальным обновлением скролла и переключением активности ---
             // Это дает браузеру время на рендеринг и расчет размеров добавленных элементов,
-            // что может предотвратить ошибку "getBoundingClientRect".
+            // что может предотвратить ошибку "getBoundingClientRect", которая происходила после аппенда body.
             setTimeout(function() {
                 console.log("Hanime Plugin: Running delayed scroll update and toggle.");
-                // Основное обновление скролла после добавления ВСЕХ элементов.
+                // Основное обновление скролла после добавления ВСЕХ элементов в body.
                 // Это обновляет границы скролла и подготавливает его к навигации.
                 scroll.update();
 
@@ -188,10 +199,6 @@
                 console.log("Hanime Plugin: Catalog built (delayed).");
             }, 50); // Задержка 50 миллисекунд. Можно увеличить, если ошибка повторяется.
             // ---------------------------------------------------------------------------------------
-
-
-            // Добавляем сам scroll элемент в основной HTML компонента, если он еще не добавлен
-            if (html.children().length === 0) { html.append(scroll.render(true)); }
 
             // --- УДАЛЕНЫ: Немедленные вызовы после добавления scroll ---
             // _this.activity.loader(false); // Удалено, перемещено в setTimeout
@@ -330,7 +337,6 @@
                       Lampa.Noty.show('Потоки не найдены для этого аниме.');
                       console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
                  }
-
              }).catch(error => {
                  // Обработка любых ошибок при запросах stream/meta
                  _this.activity.loader(false); // Скрываем лоадер
