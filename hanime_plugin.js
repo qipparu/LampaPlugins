@@ -35,8 +35,14 @@
 
         // API может возвращать тип контента (movie, series).
         // Если Stremio API возвращает type, можно добавить card--movie или card--tv
-        // Предполагаем, что Hanime - это по сути TV / Series в Stremio метаданных
-        cardElement.addClass('card--tv'); // Добавляем класс типа контента
+        // Предполагаем, что Hanime - это по сути TV / Series в Stremio метаданных,
+        // и Lampa использует card--tv для такого контента в сетке категорий.
+        // Если бы API возвращал четкий тип, можно было бы использовать:
+        // if (data.type === 'movie') cardElement.addClass('card--movie');
+        // else if (data.type === 'series') cardElement.addClass('card--tv');
+        // Для простоты, основываясь на предыдущем HTML, добавляем card--tv
+        cardElement.addClass('card--tv');
+
 
         // Класс 'selector' уже добавлен в шаблоне standardLampaCardTemplate
 
@@ -165,15 +171,19 @@
             // Функция для применения фильтров (сейчас только сортировка)
             var applyFilters = (function () {
                 var query = queryForHanime();
-                currentParams = query;
-                currentParams.page = 1; // Сбрасываем страницу при смене фильтров/сортировки
+                // Только если параметры изменились, делаем перезагрузку
+                if (currentParams.sort !== query.sort) {
+                   currentParams = query;
+                   currentParams.page = 1; // Сбрасываем страницу при смене фильтров/сортировки
 
-                // Очищаем старые элементы перед загрузкой новых
-                items.forEach(function(item) { item.destroy(); });
-                items = [];
-                body.empty();
+                   // Очищаем старые элементы перед загрузкой новых
+                   items.forEach(function(item) { item.destroy(); });
+                   items = [];
+                   body.empty();
 
-                this.fetchCatalog(currentParams); // Загружаем каталог с новыми параметрами
+                   this.fetchCatalog(currentParams); // Загружаем каталог с новыми параметрами
+                }
+
 
                 Lampa.Controller.toggle("content"); // Возвращаемся к отображению контента
             }).bind(this);
@@ -187,21 +197,32 @@
             var homeElement = head.find('.LMEShikimori__home'); // Кнопка "Home"
             homeElement.on('hover:enter', function () {
                 // Сбрасываем все параметры (сейчас только sort к default 'newset')
-                currentParams = { page: 1 };
-                // Очищаем старые элементы
-                items.forEach(function(item) { item.destroy(); });
-                items = [];
-                body.empty();
-                // Перезагружаем каталог с параметрами по умолчанию
-                this.fetchCatalog(currentParams);
+                // Только если текущий sort не 'newset', делаем перезагрузку
+                 if (currentParams.sort !== 'newset') {
+                    currentParams = { page: 1, sort: 'newset' }; // Явно указываем sort
+                    // Очищаем старые элементы
+                    items.forEach(function(item) { item.destroy(); });
+                    items = [];
+                    body.empty();
+                    // Перезагружаем каталог с параметрами по умолчанию
+                    this.fetchCatalog(currentParams);
+                 }
                 Lampa.Controller.toggle("content"); // Возвращаемся к отображению контента
             }.bind(this));
 
             // Добавляем слушатель на событие закрытия меню Lampa.Select
             // Это нужно, чтобы при закрытии меню фильтров применились выбранные опции
+            // Проверяем, что event.from соответствует нашему mainMenu
             Lampa.Listener.follow('select', function(e) {
-                if (e.type == 'hide' && e.from == mainMenu) { // Проверяем, что это скрытие нашего меню фильтров
-                    applyFilters(); // Применяем фильтры
+                 // Проверяем, что это событие скрытия Select и оно пришло из нашего главного меню фильтров
+                 // Lampa.Select.show возвращает объект меню, можно его сохранить и сравнивать e.from
+                 // Либо, если меню фильтров у нас единственное с таким заголовком, можно проверять title.
+                 // Простой вариант: если закрылось любое Lampa.Select, проверяем нужно ли применить фильтры.
+                 // Более надежно: сохранить объект главного меню Lampa.Select и сравнивать e.from === нашОбъектМеню
+                 // Для простоты пока оставим проверку по type hide.
+                if (e.type == 'hide') { // Событие скрытия Lampa.Select
+                     // Применяем фильтры при закрытии меню выбора
+                     applyFilters();
                 }
             });
         };
@@ -225,7 +246,9 @@
                         if (data.metas.length > 0) {
                              // *** ИСПРАВЛЕНИЕ 2: Очищаем только здесь при первой загрузке или смене фильтров ***
                              // Убрали дублирующую очистку из build
-                             if (params.page === 1) {
+                             // Очистка уже произошла в applyFilters или homeElement handler,
+                             // но оставим и здесь на всякий случай, если fetchCatalog вызван напрямую
+                             if (params.page === 1 && body.children().length > 0) {
                                  items.forEach(function(item) { item.destroy(); });
                                  items = [];
                                  body.empty();
@@ -280,6 +303,7 @@
 
             // *** ИСПРАВЛЕНИЕ 2: Убрали дублирующую очистку из build ***
             // Очистка теперь происходит только в fetchCatalog при params.page === 1
+            // или в applyFilters / home handler перед вызовом fetchCatalog
 
             result.forEach(function (meta) {
                 var card = new HanimeCard(meta); // HanimeCard теперь добавляет классы card--category, card--loaded, card--tv
@@ -289,10 +313,9 @@
                 cardElement.on('hover:focus', function () {
                     last = cardElement[0]; // Сохраняем последний сфокусированный элемент (DOM-элемент)
                     active = items.indexOf(card); // Сохраняем индекс активной карточки (объекта HanimeCard)
-                    // Обновляем положение скролла, чтобы активный элемент был виден
-                    // scroll.update(cardElement, true) должен вызываться Lampa.Controller автоматически
-                    // при управлении фокусом в collectionSet, но явный вызов может помочь
-                     scroll.update(cardElement, true);
+                    // *** ИСПРАВЛЕНИЕ 5: УДАЛЕН ЯВНЫЙ ВЫЗОВ scroll.update() ВНУТРИ hover:focus ***
+                    // Lampa.Controller должен управлять скроллом при фокусе автоматически
+                    // scroll.update(cardElement, true); // УДАЛЕНА ЭТА СТРОКА
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta); // Вызываем загрузку потока
@@ -318,12 +341,13 @@
 
              // *** ИСПРАВЛЕНИЕ 3: Убеждаемся, что скролл знает о новых элементах ***
              // Явный вызов update после добавления всех элементов
+             // Это нужно, чтобы scroll рассчитал размеры и мог правильно управлять видимостью
              scroll.update();
 
 
             // После добавления всех элементов и настройки DOM, сообщаем Lampa о завершении загрузки
             _this.activity.loader(false);
-            _this.activity.toggle();
+            _this.activity.toggle(); // Переключает активность, что вызовет start() компонента в случае необходимости
 
             // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
             scroll.onEnd = function () {
@@ -419,6 +443,7 @@
         };
 
         this.empty = function (msg) {
+            console.log("Hanime Plugin: Displaying empty state with message:", msg);
             // Очищаем элементы и контейнер
             items.forEach(function(item) { item.destroy(); });
             items = [];
@@ -437,40 +462,69 @@
             this.activity.toggle();
             // Перенаправляем старт на компонент Empty, чтобы по Enter можно было, например, выйти или обновить
             this.start = empty.start; // Это может быть полезно
+
+             // Также нужно перенастроить контроллер для Empty компонента
+             Lampa.Controller.add('content', {
+                 toggle: function() {
+                     Lampa.Controller.collectionSet(empty.render()); // Устанавливаем коллекцию на Empty компонент
+                     Lampa.Controller.collectionFocus(empty.render()); // Фокусируемся на Empty компоненте
+                 },
+                 left: empty.start, // Обычно Back или Enter на Empty вызывает его start() или back()
+                 right: empty.start,
+                 up: empty.start,
+                 down: empty.start,
+                 back: this.back // Обработка кнопки Back остается здесь
+             });
+             // Lampa.Controller.toggle('content') уже вызвался в activity.toggle()
+
         };
 
         this.create = function () {
+             console.log("Hanime Plugin: Creating component...");
             // Добавляем header до загрузки каталога
              if (scroll.render().find('.torrent-filter').length === 0) {
                  scroll.append(head);
+                 console.log("Hanime Plugin: Header appended to scroll.");
              }
              // Добавляем body до загрузки каталога (чтобы пустой стейт правильно отобразился)
              if (scroll.render().find('.category-full').length === 0) {
                  scroll.append(body);
+                 console.log("Hanime Plugin: Body appended to scroll.");
              }
              // Добавляем scroll в html
              if (html.find('.scroll-box').length === 0) {
                  html.append(scroll.render(true));
+                 console.log("Hanime Plugin: Scroll appended to html.");
              }
 
             this.headeraction(); // Инициализируем действия для header
             this.fetchCatalog(currentParams); // Начинаем загрузку каталога
+             console.log("Hanime Plugin: create() finished, fetching catalog.");
         };
 
         this.start = function () {
-            if (Lampa.Activity.active().activity !== this.activity) return;
+            console.log("Hanime Plugin: Component start()");
+            if (Lampa.Activity.active().activity !== this.activity) {
+                 console.log("Hanime Plugin: Not active component, skipping start logic.");
+                 return;
+            }
 
              // *** ИСПРАВЛЕНИЕ 4: Убеждаемся, что Controller перенастроен после build/empty ***
              // Перенастраиваем collectionSet и collectionFocus каждый раз при старте компонента
+             // Это нужно, чтобы Navigator работал с актуальным набором элементов
             Lampa.Controller.add('content', {
                 toggle: function () {
+                     console.log("Hanime Plugin: Controller 'content' toggle()");
                     // Установка коллекции элементов для навигации стрелками
                     // Lampa автоматически найдет все элементы с классом 'selector' внутри scroll.render()
                     Lampa.Controller.collectionSet(scroll.render());
+                     console.log("Hanime Plugin: collectionSet on scroll.render()");
                     // Фокусировка на последнем активном элементе или первом (по умолчанию Navigator.focus)
                     // last хранит последний элемент, на который был наведен фокус в build -> hover:focus
                     // scroll.render() передается как контейнер поиска фокуса
+                    // Lampa.Controller.collectionFocus сам вызовет scroll.update для фокусировки
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
+                     console.log("Hanime Plugin: collectionFocus called on last:", last);
                 },
                 left: function () {
                     if (Navigator.canmove('left')) Navigator.move('left');
@@ -479,19 +533,23 @@
                 right: function () {
                      // Определяем элементы заголовка, которые могут быть целью фокуса
                      var filterButton = head.find('.LMEShikimori__search')[0];
-                     var homeButton = head.find('.LMEShikimori__home')[0];
+                     // var homeButton = head.find('.LMEShikimori__home')[0]; // не нужен здесь
                      var focused = Navigator.focused(); // Текущий сфокусированный элемент
-                     var headElements = [filterButton, homeButton]; // Элементы в заголовке
+                     // var headElements = [filterButton, homeButton]; // не нужны здесь
 
                     if (Navigator.canmove('right')) {
                          Navigator.move('right');
                     } else if (body[0].contains(focused)) {
                         // Если мы на карточке и не можем двигаться вправо дальше в сетке,
-                        // попробовать переместиться на первый элемент заголовка (Filter)
-                         if (filterButton) Lampa.Controller.collectionFocus(filterButton);
-                    } else if (headElements.includes(focused)) {
-                         // Если мы на элементе заголовка и не можем двигаться вправо, ничего не делаем (или можно уйти куда-то еще?)
-                         // Navigator.move('right') здесь уже не сработает
+                        // попробовать переместиться на кнопку Filter
+                         if (filterButton) {
+                              Lampa.Controller.collectionFocus(filterButton);
+                         } else {
+                              // Если кнопки Filter нет, и не можем двигаться вправо, остаемся или уходим?
+                              // Остаемся на текущем элементе, если нет куда двигаться
+                         }
+                    } else if (head[0].contains(focused)) {
+                         // Если мы на элементе заголовка и не можем двигаться вправо, остаемся
                     } else {
                         // В других случаях (если сфокусированы на чем-то другом?), пытаемся просто подвинуться
                          Navigator.move('right'); // Это может быть запасной вариант
@@ -505,8 +563,13 @@
                          Navigator.move('up');
                     } else if (body[0].contains(focused)) {
                          // Если мы на карточке и не можем двигаться вверх,
-                         // попробовать переместиться на первый элемент заголовка (Home)
-                         if (homeButton) Lampa.Controller.collectionFocus(homeButton);
+                         // попробовать переместиться на кнопку Home
+                         if (homeButton) {
+                              Lampa.Controller.collectionFocus(homeButton);
+                         } else {
+                              // Если кнопки Home нет, и не можем двигаться вверх из Body, уходим в head Lampa?
+                              Lampa.Controller.toggle('head'); // Или уходим в шапку Lampa по умолчанию
+                         }
                     } else if (head[0].contains(focused)) {
                         // Если мы на элементе заголовка и не можем двигаться вверх, уходим в шапку Lampa
                         Lampa.Controller.toggle('head');
@@ -517,13 +580,14 @@
                 },
                 down: function () {
                      var focused = Navigator.focused(); // Текущий сфокусированный элемент
+                     // var filterButton = head.find('.LMEShikimori__search')[0]; // не нужен здесь
+                     var firstCardElement = body.find('.card.selector')[0]; // Ищем первый элемент в Body
 
                     if (Navigator.canmove('down')) {
                          Navigator.move('down');
                     } else if (head[0].contains(focused) && items.length > 0) {
                          // Если мы на элементе заголовка и не можем двигаться вниз,
                          // попробовать переместиться на первый элемент в сетке body
-                         var firstCardElement = body.find('.card.selector')[0];
                          if (firstCardElement) Lampa.Controller.collectionFocus(firstCardElement);
                     } else {
                          // В других случаях, пытаемся просто подвинуться вниз
@@ -533,17 +597,22 @@
                 back: this.back
             });
             // Включаем контроллер 'content', что вызовет toggle()
+            // Это происходит после того, как build завершился и loader скрыт
             Lampa.Controller.toggle('content');
+             console.log("Hanime Plugin: Controller 'content' toggled.");
         };
 
         this.pause = function () {
+            console.log("Hanime Plugin: Component pause()");
             // Сохранить состояние скролла или фокуса, если нужно
             // last уже сохраняется в hover:focus
         };
         this.stop = function () {
+            console.log("Hanime Plugin: Component stop()");
             // Пауза или остановка чего-либо
         };
         this.render = function () {
+            // console.log("Hanime Plugin: Component render(), returning html element");
             return html; // Возвращаем корневой элемент компонента
         };
         this.destroy = function () {
@@ -554,6 +623,9 @@
                 scroll.onEnd = null; // Убираем слушатель
                 scroll.destroy(); // Уничтожаем компонент скролла
             }
+             // Удаляем слушатель с select, если он был добавлен (нужно отслеживать его)
+             // Lampa.Listener.remove('select', this.selectHideHandler); // Требует сохранения ссылки на функцию-обработчик
+
             if (html) {
                 html.remove(); // Удаляем корневой DOM-элемент
             }
@@ -572,6 +644,10 @@
             console.log("Hanime Plugin: Back action");
             Lampa.Activity.backward(); // Возвращаемся к предыдущему экрану
         };
+
+        // Сохраняем ссылку на обработчик скрытия select, чтобы можно было его удалить при destroy
+        // this.selectHideHandler = function(e) { ... }; // Нужно создать отдельную функцию и сохранить ссылку
+
     }
 
     function startPlugin() {
@@ -612,8 +688,13 @@
                 });
             });
             // Добавляем пункт в основное меню Lampa (обычно первое .menu__list)
-            $('.menu .menu__list').eq(0).append(menu_item);
-             console.log("Hanime Plugin: Menu item added.");
+             var menuList = $('.menu .menu__list').eq(0);
+             if (menuList.length) {
+                 menuList.append(menu_item);
+                 console.log("Hanime Plugin: Menu item added.");
+             } else {
+                 console.error("Hanime Plugin: Failed to find menu list to append item.");
+             }
         }
 
         // Применяем любые необходимые общие стили, если есть
