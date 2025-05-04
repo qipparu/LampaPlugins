@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    // Шаблон карточки без класса card--category для горизонтального отображения
+    // Стандартная карточка Lampa
     var standardLampaCardTemplate = `
         <div class="card selector layer--render card--loaded">
             <div class="card__view">
@@ -10,26 +10,6 @@
             <div class="card__title">{title}</div>
         </div>
     `;
-
-    // Стили для горизонтального скролла
-    Lampa.Utils.css(`
-        .items-line {
-            display: flex;
-            overflow-x: auto;
-            gap: 10px;
-            padding: 10px;
-            -webkit-overflow-scrolling: touch;
-        }
-        .card {
-            flex: 0 0 auto;
-            width: 150px;
-            height: auto;
-        }
-        .card__img {
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-    `);
 
     function HanimeCard(data) {
         var cardElement = $(Lampa.Template.get('standard-lampa-card', {
@@ -48,93 +28,136 @@
 
     function HanimeComponent() {
         var network = new Lampa.Reguest();
-        var scroll = new Lampa.Scroll({
-            mask: true,
-            over: true,
-            step: 250,
-            horizontal: true // Горизонтальный скролл
-        });
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 180 });
         var items = [];
         var html = $('<div></div>');
-        var body = $('<div class="items-line"></div>'); // Горизонтальный контейнер
+        var body = $('<div class="category-full"></div>');
         var last;
-
+        
+        // Конфигурация API
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URLS = {
-            newset: API_BASE_URL + "/catalog/movie/newset.json"
+            newset: API_BASE_URL + "/catalog/movie/newset.json",
+            recent: API_BASE_URL + "/catalog/movie/recent.json",
+            mostlikes: API_BASE_URL + "/catalog/movie/mostlikes.json",
+            mostviews: API_BASE_URL + "/catalog/movie/mostviews.json"
         };
-        var SELECTED_CATALOG_URL = CATALOG_URLS.newset;
-        var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
+        
         var PROXY_BASE_URL = "http://77.91.78.5:3000";
+        var CARDS_PER_ROW = 8;
 
         this.fetchCatalog = function () {
             var _this = this;
             _this.activity.loader(true);
             network.clear();
             
-            network.native(SELECTED_CATALOG_URL,
-                function (data) {
-                    if (data && data.metas && Array.isArray(data.metas)) {
-                        _this.build(data.metas);
-                    } else {
-                        _this.empty("Неверный формат данных");
-                    }
-                },
-                function (errorStatus, errorText) {
-                    _this.empty("Ошибка загрузки каталога: " + errorStatus);
-                },
-                false,
-                {
-                    dataType: 'json',
-                    timeout: 15000
+            // Загружаем данные для всех разделов
+            const requests = Object.entries(CATALOG_URLS).map(([key, url]) => {
+                return new Promise((resolve, reject) => {
+                    network.native(url, 
+                        function(data) {
+                            if (data && data.metas && Array.isArray(data.metas)) {
+                                resolve({ key, data: data.metas });
+                            } else {
+                                reject({ key, error: "Invalid data format" });
+                            }
+                        },
+                        function(errorStatus, errorText) {
+                            reject({ key, error: `Request failed: ${errorStatus}` });
+                        }
+                    );
+                });
+            });
+
+            Promise.allSettled(requests).then(results => {
+                const successfulResults = results
+                    .filter(r => r.status === 'fulfilled')
+                    .reduce((acc, r) => {
+                        acc[r.value.key] = r.value.data;
+                        return acc;
+                    }, {});
+
+                if (Object.keys(successfulResults).length > 0) {
+                    _this.build(successfulResults);
+                } else {
+                    _this.empty("Не удалось загрузить данные с сервера");
                 }
-            );
+            });
         };
 
-        this.build = function (result) {
+        this.build = function (catalogData) {
             var _this = this;
-            items.forEach(function(item) { item.destroy(); });
+            
+            // Очищаем предыдущие элементы
+            items.forEach(item => item.destroy());
             items = [];
             body.empty();
 
-            result.forEach(function (meta) {
-                var card = new HanimeCard(meta);
-                var cardElement = card.render();
-                
-                cardElement.on('hover:focus', function () {
-                    last = cardElement[0];
-                    scroll.update(cardElement, true);
-                }).on('hover:enter', function () {
-                    _this.fetchStreamAndMeta(meta.id, meta);
-                });
-
-                body.append(cardElement);
-                items.push(card);
+            // Создаем строки для каждого раздела
+            Object.entries(catalogData).forEach(([sectionKey, data]) => {
+                if (data.length > 0) {
+                    const sectionTitle = $(`<div class="category-full__title">${getTitle(sectionKey)}</div>`);
+                    const row = $('<div class="items-line"></div>');
+                    
+                    // Группируем карточки по строкам
+                    for (let i = 0; i < data.length; i += CARDS_PER_ROW) {
+                        const cardBatch = data.slice(i, i + CARDS_PER_ROW);
+                        const cardRow = $('<div class="items-line__row"></div>');
+                        
+                        cardBatch.forEach(meta => {
+                            const card = new HanimeCard(meta);
+                            const cardElement = card.render();
+                            
+                            cardElement.on('hover:focus', () => {
+                                last = cardElement[0];
+                                scroll.update(cardElement, true);
+                            }).on('hover:enter', () => {
+                                console.log("Selected Anime:", meta.id, meta.name);
+                                _this.fetchStreamAndMeta(meta.id, meta);
+                            });
+                            
+                            cardRow.append(cardElement);
+                            items.push(card);
+                        });
+                        
+                        row.append(cardRow);
+                    }
+                    
+                    body.append(sectionTitle).append(row);
+                }
             });
 
-            // Обновляем структуру скролла
-            if (scroll.render().find('.items-line').length === 0) {
-                var scrollContent = scroll.render().find('.scroll__content');
-                scrollContent.empty().append(body);
-            }
-
-            if (html.find('.scroll-box').length === 0) {
-                html.append(scroll.render(true));
+            // Инициализируем скролл
+            if (!scroll.initialized) {
+                const scrollContent = scroll.render();
+                const scrollBody = scrollContent.find('.scroll__body') || $('<div class="scroll__body"></div>');
+                
+                scrollBody.append(body);
+                scrollContent.find('.scroll__content').append(scrollBody);
+                html.append(scrollContent);
+                scroll.initialized = true;
             }
 
             _this.activity.loader(false);
             _this.activity.toggle();
-            
-            scroll.onEnd = function () {
-                console.log("Горизонтальный скролл завершен");
-            };
+            requestAnimationFrame(() => scroll.reset());
         };
+
+        function getTitle(key) {
+            const titles = {
+                newset: "Новое",
+                recent: "Последнее",
+                mostlikes: "Популярное",
+                mostviews: "Самое просматриваемое"
+            };
+            return titles[key] || key;
+        }
 
         this.fetchStreamAndMeta = function (id, meta) {
             var _this = this;
-            var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            _this.activity.loader(true);
+            var streamUrl = API_BASE_URL + "/stream/movie/" + id + ".json";
             
+            _this.activity.loader(true);
             network.native(streamUrl,
                 function(streamData) {
                     _this.activity.loader(false);
@@ -149,35 +172,36 @@
                                 finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
                             }
                         } catch (e) {
-                            console.error("Ошибка проксирования", e);
+                            console.error("URL parsing error", e);
                         }
 
                         var playerObject = {
-                            title: meta.name || 'Без названия',
+                            title: meta.name || meta.title || 'Без названия',
                             url: finalStreamUrl,
-                            poster: meta.poster
+                            poster: meta.poster || meta.background
                         };
-
+                        
                         if (playerObject.url) {
                             Lampa.Player.play(playerObject);
                             Lampa.Player.playlist([playerObject]);
                             
-                            Lampa.Favorite.add('history', {
+                            const historyMeta = {
                                 id: meta.id,
-                                title: meta.name,
-                                poster: meta.poster
-                            }, 100);
+                                title: meta.name || meta.title,
+                                poster: meta.poster || meta.background
+                            };
+                            Lampa.Favorite.add('history', historyMeta, 100);
+                        } else {
+                            Lampa.Noty.show('Не удалось получить ссылку на поток.');
                         }
+                    } else {
+                        Lampa.Noty.show('Потоки не найдены.');
                     }
                 },
-                function(errorStatus) {
+                function(errorStatus, errorText) {
                     _this.activity.loader(false);
-                    Lampa.Noty.show('Ошибка потока: ' + errorStatus);
-                },
-                false,
-                {
-                    dataType: 'json',
-                    timeout: 10000
+                    console.error("Stream fetch error", errorStatus, errorText);
+                    Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
                 }
             );
         };
@@ -211,15 +235,12 @@
                     if (Navigator.canmove('left')) Navigator.move('left');
                     else Lampa.Controller.toggle('menu');
                 },
-                right: function () {
-                    if (Navigator.canmove('right')) Navigator.move('right');
-                },
+                right: function () { Navigator.move('right'); },
                 up: function () {
-                    Lampa.Controller.toggle('head');
+                    if (Navigator.canmove('up')) Navigator.move('up');
+                    else Lampa.Controller.toggle('head');
                 },
-                down: function () {
-                    Lampa.Controller.toggle('menu');
-                },
+                down: function () { Navigator.move('down'); },
                 back: this.back
             });
             
@@ -228,10 +249,7 @@
 
         this.pause = function () {};
         this.stop = function () {};
-        
-        this.render = function () {
-            return html;
-        };
+        this.render = function () { return html; };
         
         this.destroy = function () {
             network.clear();
@@ -298,5 +316,67 @@
         }
     }
 
+    // Добавьте эти стили в ваш CSS файл
+    /*
+    .category-full {
+        padding: 0 20px;
+    }
+    
+    .category-full__title {
+        font-size: 18px;
+        margin: 20px 0 10px;
+        color: #fff;
+    }
+    
+    .items-line {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .items-line__row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    
+    .card {
+        flex: 0 0 calc(12.5% - 9px);
+        width: calc(12.5% - 9px);
+        max-width: calc(12.5% - 9px);
+        height: auto;
+        margin: 0;
+        transition: transform 0.2s ease;
+    }
+    
+    .card:hover {
+        transform: scale(1.05);
+    }
+    
+    .card__view {
+        aspect-ratio: 2/3;
+        position: relative;
+        overflow: hidden;
+        border-radius: 4px;
+    }
+    
+    .card__img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+    
+    .card__title {
+        font-size: 12px;
+        margin-top: 8px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+    */
+    
     startPlugin();
 })();
