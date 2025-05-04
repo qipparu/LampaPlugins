@@ -142,9 +142,8 @@
         }
       });
 
-      const renderedScroll = scroll.render();
-      const scrollContent = renderedScroll.find('.scroll__content');
-      let scrollBody = renderedScroll.find('.scroll__body');
+      const scrollContent = scroll.render().find('.scroll__content');
+      let scrollBody = scroll.render().find('.scroll__body');
 
       if (!scrollBody.length) {
         scrollBody = $('<div class="scroll__body"></div>');
@@ -156,7 +155,7 @@
       scrollBody.append(body);
 
       if (!html.find('.scroll-box').length) {
-        html.append(renderedScroll);
+        html.append(scroll.render(true));
       }
 
       _this.activity.loader(false);
