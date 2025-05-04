@@ -1,90 +1,27 @@
 (function () {
     'use strict';
 
-    // Кастомный шаблон карточки из рабочей версии
-    var hanimeCardTemplate = `
-        <div class="hanime-card card selector">
-            <div class="hanime-card__view">
-                <img src="{img}" class="hanime-card__img" alt="{title}" loading="lazy" />
+    // Используем стандартный шаблон карточки Lampa с использованием placeholders {}
+    var standardLampaCardTemplate = `
+        <div class="card selector">
+            <div class="card__view">
+                <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
             </div>
-            <div class="hanime-card__title">{title}</div>
+            <div class="card__title">{title}</div>
         </div>
     `;
 
-    // Кастомные стили из рабочей версии
-    var hanimeCatalogStyle = `
-        .hanime-catalog__body.category-full {
-            justify-content: space-around;
-        }
-        .hanime-card {
-            width: 185px;
-            margin-bottom: 1.5em;
-            border-radius: 0.5em;
-            overflow: hidden;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            position: relative;
-            box-sizing: border-box;
-        }
-        .hanime-card.selector:focus {
-            transform: scale(1.05);
-            box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Красное свечение при фокусе */
-            z-index: 5;
-            border: 3px solid rgba(255, 255, 255, 0.5);
-        }
-         .hanime-card.selector.focus:not(.native) {
-             border-color: transparent;
-             outline: none;
-         }
-
-        .hanime-card__view {
-            position: relative;
-            height: 270px;
-            background-color: rgba(255,255,255,0.05);
-            border-radius: 0.5em;
-            overflow: hidden;
-        }
-         .hanime-card__img {
-             position: absolute;
-             width: 100%;
-             height: 100%;
-             object-fit: cover;
-             border-radius: 0.5em;
-         }
-         .hanime-card__title {
-             margin-top: 0.5em;
-             padding: 0 0.5em;
-             font-size: 1em;
-             font-weight: bold;
-             white-space: nowrap;
-             overflow: hidden;
-             text-overflow: ellipsis;
-             text-align: center;
-             color: #fff;
-         }
-        .hanime-card__description {
-            display: none; /* Не используется в этом плагине */
-        }
-
-        .menu__ico svg {
-              width: 1.5em;
-              height: 1.5em;
-        }
-         /* Стиль для хедера фильтров */
-        .torrent-filter{margin-left:1.5em;}
-    `;
-
-
-    // Модифицированная функция HanimeCard, использующая кастомный шаблон
+    // Модифицированная функция HanimeCard, использующая Lampa.Template.get и стандартный шаблон
     function HanimeCard(data) {
-        var cardTemplate = Lampa.Template.get('hanime-card', {
-            id: data.id || '', // Добавлено || '', на случай если id нет
-            img: data.poster || '',
-            title: data.name || data.title || '', // Используем name, title или пустую строку
+        // Используем Lampa.Template.get для правильной подстановки данных в шаблон
+        // Убедимся, что передаем данные, которые ожидает стандартный шаблон
+        var cardTemplate = Lampa.Template.get('standard-lampa-card', {
+            img: data.poster || '', // Используем poster или пустую строку
+            title: data.name || data.title || ''  // Используем name, title или пустую строку
         });
 
         var cardElement = $(cardTemplate);
-
-        // Класс 'selector' уже добавлен в hanimeCardTemplate
+        // Класс 'selector' уже добавлен в шаблоне standardLampaCardTemplate
 
         this.render = function () {
             return cardElement;
@@ -97,12 +34,13 @@
 
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
+        // Используем Lampa.Scroll со стандартными параметрами
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = [];
-        // Используем простой div как основной контейнер с кастомным классом
-        var html = $('<div class="hanime-catalog"></div>');
-        // Используем стандартный класс category-full для контейнера карточек + кастомный класс
-        var body = $('<div class="hanime-catalog__body category-full"></div>');
+        // Используем простой div как основной контейнер
+        var html = $('<div></div>');
+        // Используем стандартный класс category-full для контейнера карточек
+        var body = $('<div class="category-full"></div>');
          // Перенесен HTML заголовка с кнопками фильтрации
         var head = $("<div class='torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
 
@@ -111,7 +49,6 @@
         var last;
         var currentParams = componentObject || { page: 1, sort: 'newset' }; // Устанавливаем дефолтный sort
 
-
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URLS = {
              newset: API_BASE_URL + "/catalog/movie/newset.json",
@@ -119,7 +56,7 @@
              mostlikes: API_BASE_URL + "/catalog/movie/mostlikes.json",
              mostviews: API_BASE_URL + "/catalog/movie/mostviews.json",
         };
-        // Убираем DEFAULT_CATALOG_URL, используем CATALOG_URLS[sortKey]
+        var DEFAULT_CATALOG_URL = CATALOG_URLS.newset;
 
         var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
@@ -281,9 +218,8 @@
 
             console.log("Building cards for", result.length, "items."); // Лог количества элементов для построения
 
-            // --- ИЗМЕНЕНИЕ: УДАЛЕН scroll.minus() ---
-            // scroll.minus(); // Убрано, так как добавление элементов происходит после и это может мешать скроллу
-
+            // При загрузке новой порции данных (при page: 1 или смене фильтра),
+            // body уже очищен в fetchCatalog. Добавляем элементы.
             result.forEach(function (meta) {
                 // console.log("Processing meta:", meta); // Лог каждого элемента meta перед созданием карточки (можно раскомментировать для детальной отладки)
                 var card = new HanimeCard(meta);
@@ -306,13 +242,7 @@
                 items.push(card); // Добавляем объект карточки в массив items
             });
 
-            // --- ИЗМЕНЕНИЕ: ДОБАВЛЕНИЕ ЭЛЕМЕНТОВ В DOM ПЕРЕМЕЩЕНО В create ---
-            // scroll.append(head);
-            // scroll.append(body);
-            // html.append(scroll.render(true));
-            // Теперь эти строки находятся в методе create и выполняются один раз
-
-            // После добавления всех элементов и настройки DOM, сообщаем Lampa о завершении загрузки
+            // После добавления всех элементов, сообщаем Lampa о завершении загрузки
             _this.activity.loader(false);
             _this.activity.toggle();
 
@@ -431,15 +361,15 @@
             // this.start = empty.start; // Это может быть полезно
         };
 
-        // --- ИЗМЕНЕНИЕ: СТРУКТУРА DOM СОЗДАЕТСЯ ОДИН РАЗ ЗДЕСЬ ---
+        // --- СТРУКТУРА DOM СОЗДАЕТСЯ ОДИН РАЗ ЗДЕСЬ ---
         this.create = function () {
              // Создаем базовую структуру DOM один раз при создании компонента
              scroll.append(head);
              scroll.append(body); // body изначально пустой
              html.append(scroll.render(true));
 
-             this.headeraction(); // Инициализируем действия хедера (остается здесь)
-             this.fetchCatalog(currentParams); // Начинаем загрузку каталога (остается здесь)
+             this.headeraction(); // Инициализируем действия хедера
+             this.fetchCatalog(currentParams); // Начинаем загрузку каталога
         };
 
 
@@ -551,11 +481,11 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        // Регистрируем кастомный шаблон карточки
-        Lampa.Template.add('hanime-card', hanimeCardTemplate);
-        // Регистрируем кастомные стили
-        Lampa.Template.add('hanime-style', `<style>${hanimeCatalogStyle}</style>`);
+        // Регистрируем стандартный шаблон карточки Lampa
+        Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
 
+        // Стандартные стили Lampa для карточек и выделения должны работать автоматически
+        // при использовании классов 'card' и 'selector', а также category-full.
 
         Lampa.Component.add('hanime_catalog', HanimeComponent);
 
@@ -581,8 +511,8 @@
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
-        // Применяем кастомные стили
-         $('head').append(Lampa.Template.get('hanime-style', {}, true));
+        // Применяем минимальный необходимый стиль для хедера
+         $('head').append('<style>.torrent-filter{margin-left:1.5em;}</style>');
 
 
         if (window.appready) {
