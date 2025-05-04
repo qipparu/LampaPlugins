@@ -68,13 +68,15 @@
         // Настройки скролла: маска, оверскролл, шаг
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = []; // Массив объектов карточек (HanimeCard)
-        var html = $('<div class="hanime-catalog"></div>'); // Основной контейнер компонента
+        var html = $('<div class="hanime-catalog"></div>');
+        // Основной контейнер компонента
         // Заголовок с кнопкой выбора каталога
         var head = $('<div class="hanime-head torrent-filter"><div class="hanime__catalog-select simple-button simple-button--filter selector">Catalog: Newset</div></div>');
         // Контейнер для карточек каталога
         var body = $('<div class="hanime-catalog__body category-full"></div>');
         var active = 0; // Индекс текущего активного элемента
-        var last; // Ссылка на последний сфокусированный DOM-элемент
+        var last;
+        // Ссылка на последний сфокусированный DOM-элемент
 
 
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
@@ -132,13 +134,12 @@
 
         // Метод для очистки текущих элементов списка
         this.clearItems = function() {
-             console.log("Hanime Plugin: Clearing items.");
+            console.log("Hanime Plugin: Clearing items.");
              // Уничтожаем каждый объект карточки и удаляем его DOM элемент
              items.forEach(function(item) { item.destroy(); });
              items = []; // Очищаем массив ссылок на карточки
              body.empty(); // Удаляем все дочерние элементы из контейнера body
         };
-
         // Метод для построения списка карточек на основе полученных данных
         this.build = function (result) {
             var _this = this;
@@ -173,12 +174,10 @@
                     active = items.indexOf(card); // Сохраняем индекс активной карточки
                     // Вызов scroll.update из обработчика focus УДАЛЕН в предыдущей версии.
                     // Полагаемся на Lampa Controller/Navigator/Scroll для автоматического скролла.
-                }).on('hover:enter', function () {
-                    // При нажатии Enter
+                }).on('hover:enter', function () { // При нажатии Enter
                     console.log("Selected Anime:", meta.id, meta.name);
                     _this.fetchStreamAndMeta(meta.id, meta); // Загружаем стрим и мету для выбранного аниме
                 });
-
                 // Добавляем DOM элемент карточки в контейнер body (который УЖЕ добавлен в scroll)
                 body.append(cardElement);
                 items.push(card); // Добавляем объект карточки в массив items
@@ -206,8 +205,7 @@
             // console.log("Hanime Plugin: Catalog built."); // Удалено, перемещено в setTimeout
             // ---------------------------------------------------------
         };
-
-         // Метод для добавления функционала выбора каталога к заголовку
+        // Метод для добавления функционала выбора каталога к заголовку
         this.setupCatalogSelect = function() {
              var selectElement = head.find('.hanime__catalog-select');
              var _this = this;
@@ -231,9 +229,9 @@
                          Lampa.Controller.toggle('content'); // Возвращаемся к контроллеру контента после выбора
                      }
                  });
-                 Lampa.Controller.toggle('select'); // Переключаемся на контроллер диалога выбора
+                Lampa.Controller.toggle('select'); // Переключаемся на контроллер диалога выбора
              });
-             console.log("Hanime Plugin: Catalog select setup.");
+            console.log("Hanime Plugin: Catalog select setup.");
         };
 
         // Метод для загрузки данных потока и детальных метаданных
@@ -259,6 +257,7 @@
 
              ]).then(([streamData, metaDataResponse]) => {
                  // Оба запроса выполнены успешно
+
                  _this.activity.loader(false); // Скрываем лоадер
 
                  // Объединяем метаданные из разных источников (переданные изначально и полученные по metaUrl)
@@ -268,7 +267,6 @@
 
                  console.log("Stream Data:", streamData);
                  console.log("Full Meta Data:", fullMetaData);
-
                  // Проверяем, есть ли данные о потоках в ответе
                  if (streamData && streamData.streams && Array.isArray(streamData.streams) && streamData.streams.length > 0) {
                      var streamToPlay = streamData.streams[0]; // Берем первый поток из списка
@@ -302,7 +300,6 @@
                          poster: fullMetaData.poster || fullMetaData.background, // Используем постер из меты
                          // Можете добавить другие параметры, которые поддерживает плеер Lampa (например, субтитры)
                      };
-
                      // Проверяем, что у нас есть валидный URL для плеера
                      if (playerObject.url) {
                           console.log("Hanime Plugin: Launching player with:", playerObject);
@@ -360,7 +357,7 @@
             this.activity.toggle(); // Показываем компонент
             // Назначаем start на метод empty, чтобы при фокусе на сообщении "пусто"
             // можно было вернуться к управлению активностью.
-             this.start = empty.start;
+            this.start = empty.start;
         };
 
         // Метод, вызываемый Lampa при создании компонента
@@ -370,12 +367,10 @@
             this.setupCatalogSelect(); // Настраиваем функционал выбора каталога
             this.fetchCatalog(); // Загружаем данные каталога
         };
-
         // Метод, вызываемый Lampa, когда компонент становится активным на экране и готов принимать управление
         this.start = function () {
             // Проверяем, активен ли именно этот экземпляр компонента
             if (Lampa.Activity.active().activity !== this.activity) return;
-
             console.log("Hanime Plugin: Starting component.");
 
             // Настраиваем контроллер Lampa для навигации по элементам компонента
@@ -415,13 +410,12 @@
                 },
                 back: this.back // Обработка кнопки "назад"
             });
-
-             // Контроллер 'head' для навигации по элементам в заголовке (кнопки)
+            // Контроллер 'head' для навигации по элементам в заголовке (кнопки)
              Lampa.Controller.add('head', {
                  toggle: function() {
                       // Коллекция для контроллера заголовка - только элементы в head
                       Lampa.Controller.collectionSet(head);
-                       // Фокусируемся на первой кнопке в заголовке
+                      // Фокусируемся на первой кнопке в заголовке
                       Lampa.Controller.collectionFocus(head.find('.simple-button').first()[0], head);
                       console.log("Hanime Plugin: Head controller toggle. Focus on:", head.find('.simple-button').first()[0]);
                  },
@@ -440,11 +434,8 @@
                  },
                  back: this.back // Кнопка назад в заголовке
              });
-
-
-             // При старте компонента, по умолчанию переключаемся на контроллер контента
+            // При старте компонента, по умолчанию переключаемся на контроллер контента
             Lampa.Controller.toggle('content');
-
         };
 
         // Методы жизненного цикла компонента Lampa
@@ -456,7 +447,6 @@
             // Возвращаем основной HTML элемент компонента
             return html; // Возвращаем jQuery объект
         };
-
         // Метод, вызываемый Lampa при уничтожении компонента
         this.destroy = function () {
              console.log("Hanime Plugin: Destroyed");
@@ -472,22 +462,20 @@
             // Обнуляем ссылки для сборщика мусора
             items = null; network = null; scroll = null; html = null; body = null; head = null; last = null;
         };
-
         // Метод для обработки кнопки "назад"
         this.back = function () {
              console.log("Hanime Plugin: Going back");
-             // Стандартное действие "назад" в Lampa - вернуться к предыдущей активности
+            // Стандартное действие "назад" в Lampa - вернуться к предыдущей активности
              Lampa.Activity.backward();
-             // При возврате из диалога выбора каталога, back обрабатывается внутри Select.show
+            // При возврате из диалога выбора каталога, back обрабатывается внутри Select.show
         };
-
-         // Метод поиска (заглушка, т.к. API не предоставляет endpoint поиска)
+        // Метод поиска (заглушка, т.к. API не предоставляет endpoint поиска)
          // Этот метод может быть вызван Lampa, если плагин зарегистрирует функцию search
          this.search = function(query) {
              console.log("Hanime Plugin: Search initiated with query:", query);
-             // Показываем уведомление, что поиск не поддерживается через этот API
+            // Показываем уведомление, что поиск не поддерживается через этот API
              Lampa.Noty.show('Поиск по API Hanime не поддерживается в этом плагине.');
-             // Если бы API поддерживал поиск, здесь был бы вызов network.native к endpoint поиска
+            // Если бы API поддерживал поиск, здесь был бы вызов network.native к endpoint поиска
          };
     }
 
@@ -581,7 +569,6 @@
          `;
          // Добавляем стиль как шаблон в реестр Lampa
          Lampa.Template.add('hanime-style', `<style>${style}</style>`);
-
          // --- Добавляем стиль в <head> документа ---
          // Используем Lampa.Template.get с true, чтобы получить HTML-элемент <style>
          // Аппендим его в head документа. Делаем это здесь, чтобы стиль гарантированно
@@ -596,13 +583,12 @@
              <div class="hanime-card card selector layer--visible layer--render">
                  <div class="hanime-card__view">
                      <img src="{img}" class="hanime-card__img" alt="{title}" loading="lazy" />
-                     </div>
+                 </div>
                  <div class="hanime-card__title">{title}</div>
              </div>
          `;
          // Добавляем шаблон карточки в реестр Lampa
          Lampa.Template.add('hanime-card', cardTemplate);
-
          // Устанавливаем флаг, что шаблоны добавлены
          window.hanime_templates_added = true;
          console.log("Hanime Plugin: Templates and styles added.");
@@ -624,7 +610,6 @@
 
         // Добавляем стили и шаблоны, и аппендим стиль в head
         addTemplatesAndStyles();
-
         // Регистрируем наш компонент в Lampa
         // 'hanime_catalog' - уникальное имя компонента
         // HanimeComponent - функция-конструктор нашего компонента
