@@ -1,9 +1,9 @@
 (function () {
     'use strict';
 
-    // Шаблон карточки без класса card--category для горизонтального отображения
+    // Стандартный шаблон карточки Lampa
     var standardLampaCardTemplate = `
-        <div class="card selector layer--render card--loaded">
+        <div class="card selector layer--render card--category card--loaded">
             <div class="card__view">
                 <img src="{img}" class="card__img" alt="{title}" loading="lazy" />
             </div>
@@ -11,35 +11,7 @@
         </div>
     `;
 
-    // Ручное добавление CSS-стилей для горизонтального скролла
-    var style = document.createElement('style');
-    style.textContent = `
-        .items-line {
-            display: flex;
-            overflow-x: auto;
-            gap: 10px;
-            padding: 10px;
-            -webkit-overflow-scrolling: touch;
-        }
-        .card {
-            flex: 0 0 auto;
-            width: 150px;
-            height: auto;
-        }
-        .card__img {
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-        .scroll--horizontal {
-            overflow-x: auto;
-        }
-        .scroll__body {
-            display: flex;
-            gap: 10px;
-        }
-    `;
-    document.head.appendChild(style);
-
+    // Карточка для раздела
     function HanimeCard(data) {
         var cardElement = $(Lampa.Template.get('standard-lampa-card', {
             img: data.poster || '',
@@ -55,137 +27,199 @@
         };
     }
 
-    function HanimeComponent() {
+    // Основной компонент каталога
+    function HanimeCatalogComponent() {
         var network = new Lampa.Reguest();
-        var scroll = new Lampa.Scroll({
-            mask: true,
-            over: true,
-            step: 250,
-            horizontal: true // Горизонтальный скролл
-        });
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var items = [];
         var html = $('<div></div>');
-        var body = $('<div class="items-line"></div>'); // Горизонтальный контейнер
+        var body = $('<div class="category-full"></div>');
         var last;
-
+        
+        // Конфигурация API
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URLS = {
-            newset: API_BASE_URL + "/catalog/movie/newset.json"
+            newset: "/catalog/movie/newset.json",
+            recent: "/catalog/movie/recent.json",
+            mostlikes: "/catalog/movie/mostlikes.json",
+            mostviews: "/catalog/movie/mostviews.json"
         };
-        var SELECTED_CATALOG_URL = CATALOG_URLS.newset;
-        var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
+        
         var PROXY_BASE_URL = "http://77.91.78.5:3000";
+        var CARDS_PER_ROW = 8;
 
-        this.fetchCatalog = function () {
+        this.fetchCatalogs = function () {
             var _this = this;
             _this.activity.loader(true);
             network.clear();
             
-            network.native(SELECTED_CATALOG_URL,
-                function (data) {
-                    if (data && data.metas && Array.isArray(data.metas)) {
-                        _this.build(data.metas);
-                    } else {
-                        _this.empty("Неверный формат данных");
-                    }
-                },
-                function (errorStatus, errorText) {
-                    _this.empty("Ошибка загрузки каталога: " + errorStatus);
-                },
-                false,
-                {
-                    dataType: 'json',
-                    timeout: 15000
+            // Параллельная загрузка всех разделов
+            const requests = Object.entries(CATALOG_URLS).map(([key, path]) => {
+                return new Promise((resolve, reject) => {
+                    network.native(API_BASE_URL + path, 
+                        function(data) {
+                            if (data && data.metas && Array.isArray(data.metas)) {
+                                resolve({ key, data: data.metas });
+                            } else {
+                                reject({ key, error: "Invalid data format" });
+                            }
+                        },
+                        function(errorStatus) {
+                            reject({ key, error: `Request failed: ${errorStatus}` });
+                        }
+                    );
+                });
+            });
+
+            Promise.allSettled(requests).then(results => {
+                const catalogData = results
+                    .filter(r => r.status === 'fulfilled')
+                    .reduce((acc, r) => {
+                        acc[r.value.key] = r.value.data;
+                        return acc;
+                    }, {});
+
+                if (Object.keys(catalogData).length > 0) {
+                    _this.build(catalogData);
+                } else {
+                    _this.empty("Не удалось загрузить данные с сервера");
                 }
-            );
+            });
         };
 
-        this.build = function (result) {
+        this.build = function (catalogData) {
             var _this = this;
-            items.forEach(function(item) { item.destroy(); });
+            
+            // Очистка предыдущих данных
+            items.forEach(item => item.destroy());
             items = [];
             body.empty();
 
-            result.forEach(function (meta) {
-                var card = new HanimeCard(meta);
-                var cardElement = card.render();
-                
-                cardElement.on('hover:focus', function () {
-                    last = cardElement[0];
-                    scroll.update(cardElement, true);
-                }).on('hover:enter', function () {
-                    _this.fetchStreamAndMeta(meta.id, meta);
-                });
+            // Создание разделов
+            Object.entries(catalogData).forEach(([sectionKey, data]) => {
+                if (data.length > 0) {
+                    // Заголовок раздела с кнопкой "Ещё"
+                    const sectionHeader = $(`
+                        <div class="category-full__header">
+                            <div class="category-full__title">${getTitle(sectionKey)}</div>
+                            <div class="category-full__more selector">Ещё</div>
+                        </div>
+                    `);
+                    
+                    const itemsLine = $('<div class="items-line"></div>');
+                    
+                    // Обработка клика по "Ещё"
+                    sectionHeader.find('.category-full__more').on('hover:enter', () => {
+                        Lampa.Activity.push({
+                            url: '',
+                            title: getTitle(sectionKey),
+                            component: 'hanime_section',
+                            page: 1,
+                            params: {
+                                section: sectionKey,
+                                url: API_BASE_URL + CATALOG_URLS[sectionKey]
+                            }
+                        });
+                    });
 
-                body.append(cardElement);
-                items.push(card);
+                    // Группировка карточек
+                    data.forEach(meta => {
+                        const card = new HanimeCard(meta);
+                        const cardElement = card.render();
+                        
+                        // Обработчики событий
+                        cardElement.on('hover:focus', () => {
+                            last = cardElement[0];
+                            scroll.update(cardElement, true);
+                        }).on('hover:enter', () => {
+                            console.log("Selected Anime:", meta.id, meta.name);
+                            _this.fetchStreamAndMeta(meta.id, meta);
+                        });
+                        
+                        itemsLine.append(cardElement);
+                        items.push(card);
+                    });
+                    
+                    // Добавление раздела
+                    body.append(sectionHeader).append(itemsLine);
+                }
             });
 
-            // Обертка для горизонтального скролла
-            var scrollBody = $('<div class="scroll__body"></div>').append(body);
-            var scrollContainer = scroll.render();
-            scrollContainer.find('.scroll__content').empty().append(scrollBody);
-
-            if (html.find('.scroll-box').length === 0) {
-                html.append(scrollContainer);
+            // Инициализация скролла
+            if (!scroll.initialized) {
+                const scrollContent = scroll.render();
+                const scrollBody = scrollContent.find('.scroll__body') || $('<div class="scroll__body"></div>');
+                
+                scrollBody.append(body);
+                scrollContent.find('.scroll__content').append(scrollBody);
+                html.append(scrollContent);
+                scroll.initialized = true;
             }
 
             _this.activity.loader(false);
             _this.activity.toggle();
-            
-            scroll.onEnd = function () {
-                console.log("Горизонтальный скролл завершен");
-            };
+            requestAnimationFrame(() => scroll.reset());
         };
+
+        function getTitle(key) {
+            const titles = {
+                newset: "Новое",
+                recent: "Последнее",
+                mostlikes: "Популярное",
+                mostviews: "Самое просматриваемое"
+            };
+            return titles[key] || key;
+        }
 
         this.fetchStreamAndMeta = function (id, meta) {
             var _this = this;
-            var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            _this.activity.loader(true);
+            var streamUrl = API_BASE_URL + `/stream/movie/${id}.json`;
             
+            _this.activity.loader(true);
             network.native(streamUrl,
                 function(streamData) {
                     _this.activity.loader(false);
                     
                     if (streamData && streamData.streams && streamData.streams.length > 0) {
-                        var streamToPlay = streamData.streams[0];
-                        var finalStreamUrl = streamToPlay.url;
+                        let finalStreamUrl = streamData.streams[0].url;
                         
                         try {
-                            var url = new URL(finalStreamUrl);
-                            if (url.hostname.includes('highwinds-cdn.com') || url.hostname.includes('proxy.hentai.stream')) {
+                            const url = new URL(finalStreamUrl);
+                            if (url.hostname.includes('highwinds-cdn.com') || 
+                                url.hostname.includes('proxy.hentai.stream')) {
                                 finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
                             }
                         } catch (e) {
-                            console.error("Ошибка проксирования", e);
+                            console.error("URL parsing error", e);
                         }
 
-                        var playerObject = {
-                            title: meta.name || 'Без названия',
+                        const playerObject = {
+                            title: meta.name || meta.title || 'Без названия',
                             url: finalStreamUrl,
-                            poster: meta.poster
+                            poster: meta.poster || meta.background
                         };
-
+                        
                         if (playerObject.url) {
                             Lampa.Player.play(playerObject);
                             Lampa.Player.playlist([playerObject]);
                             
-                            Lampa.Favorite.add('history', {
+                            const historyMeta = {
                                 id: meta.id,
-                                title: meta.name,
-                                poster: meta.poster
-                            }, 100);
+                                title: meta.name || meta.title,
+                                poster: meta.poster || meta.background
+                            };
+                            Lampa.Favorite.add('history', historyMeta, 100);
+                        } else {
+                            Lampa.Noty.show('Не удалось получить ссылку на поток.');
                         }
+                    } else {
+                        Lampa.Noty.show('Потоки не найдены.');
                     }
                 },
                 function(errorStatus) {
                     _this.activity.loader(false);
-                    Lampa.Noty.show('Ошибка потока: ' + errorStatus);
-                },
-                false,
-                {
-                    dataType: 'json',
-                    timeout: 10000
+                    console.error("Stream fetch error", errorStatus);
+                    Lampa.Noty.show(`Ошибка загрузки потока: ${errorStatus}`);
                 }
             );
         };
@@ -204,7 +238,7 @@
         };
 
         this.create = function () {
-            this.fetchCatalog();
+            this.fetchCatalogs();
         };
 
         this.start = function () {
@@ -219,15 +253,12 @@
                     if (Navigator.canmove('left')) Navigator.move('left');
                     else Lampa.Controller.toggle('menu');
                 },
-                right: function () {
-                    if (Navigator.canmove('right')) Navigator.move('right');
-                },
+                right: function () { Navigator.move('right'); },
                 up: function () {
-                    Lampa.Controller.toggle('head');
+                    if (Navigator.canmove('up')) Navigator.move('up');
+                    else Lampa.Controller.toggle('head');
                 },
-                down: function () {
-                    Lampa.Controller.toggle('menu');
-                },
+                down: function () { Navigator.move('down'); },
                 back: this.back
             });
             
@@ -236,10 +267,7 @@
 
         this.pause = function () {};
         this.stop = function () {};
-        
-        this.render = function () {
-            return html;
-        };
+        this.render = function () { return html; };
         
         this.destroy = function () {
             network.clear();
@@ -264,13 +292,163 @@
         };
     }
 
+    // Компонент для отдельного раздела
+    function HanimeSectionComponent() {
+        var network = new Lampa.Reguest();
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
+        var items = [];
+        var html = $('<div></div>');
+        var body = $('<div class="category-full"></div>');
+        var last;
+
+        this.fetchSection = function () {
+            var _this = this;
+            const sectionUrl = this.activity.params.url;
+            
+            _this.activity.loader(true);
+            network.clear();
+            
+            network.native(sectionUrl,
+                function(data) {
+                    if (data && data.metas && Array.isArray(data.metas)) {
+                        if (data.metas.length > 0) {
+                            _this.build(data.metas);
+                        } else {
+                            _this.empty("Раздел пуст.");
+                        }
+                    } else {
+                        _this.empty("Неверный формат данных.");
+                        console.error("Invalid data format", data);
+                    }
+                },
+                function(errorStatus) {
+                    _this.empty(`Ошибка загрузки: ${errorStatus}`);
+                    console.error("Failed to load section", errorStatus);
+                }
+            );
+        };
+
+        this.build = function (result) {
+            var _this = this;
+            
+            items.forEach(item => item.destroy());
+            items = [];
+            body.empty();
+
+            const itemsLine = $('<div class="items-line"></div>');
+            
+            result.forEach(meta => {
+                const card = new HanimeCard(meta);
+                const cardElement = card.render();
+                
+                cardElement.on('hover:focus', () => {
+                    last = cardElement[0];
+                    scroll.update(cardElement, true);
+                }).on('hover:enter', () => {
+                    console.log("Selected Anime:", meta.id, meta.name);
+                    _this.fetchStreamAndMeta(meta.id, meta);
+                });
+                
+                itemsLine.append(cardElement);
+                items.push(card);
+            });
+            
+            body.append(itemsLine);
+
+            if (!scroll.initialized) {
+                const scrollContent = scroll.render();
+                const scrollBody = scrollContent.find('.scroll__body') || $('<div class="scroll__body"></div>');
+                
+                scrollBody.append(body);
+                scrollContent.find('.scroll__content').append(scrollBody);
+                html.append(scrollContent);
+                scroll.initialized = true;
+            }
+
+            _this.activity.loader(false);
+            _this.activity.toggle();
+            requestAnimationFrame(() => scroll.reset());
+        };
+
+        this.empty = function (msg) {
+            var empty = new Lampa.Empty({ message: msg });
+            scroll.render().empty().append(empty.render(true));
+            
+            if (html.find('.scroll-box').length === 0) {
+                html.append(scroll.render(true));
+            }
+            
+            this.activity.loader(false);
+            this.activity.toggle();
+            this.start = empty.start;
+        };
+
+        this.create = function () {
+            this.fetchSection();
+        };
+
+        this.start = function () {
+            if (Lampa.Activity.active().activity !== this.activity) return;
+            
+            Lampa.Controller.add('content', {
+                toggle: function () {
+                    Lampa.Controller.collectionSet(scroll.render());
+                    Lampa.Controller.collectionFocus(last || false, scroll.render());
+                },
+                left: function () {
+                    if (Navigator.canmove('left')) Navigator.move('left');
+                    else Lampa.Controller.toggle('menu');
+                },
+                right: function () { Navigator.move('right'); },
+                up: function () {
+                    if (Navigator.canmove('up')) Navigator.move('up');
+                    else Lampa.Controller.toggle('head');
+                },
+                down: function () { Navigator.move('down'); },
+                back: this.back
+            });
+            
+            Lampa.Controller.toggle('content');
+        };
+
+        this.pause = function () {};
+        this.stop = function () {};
+        this.render = function () { return html; };
+        
+        this.destroy = function () {
+            network.clear();
+            Lampa.Arrays.destroy(items);
+            
+            if (scroll) {
+                scroll.onEnd = null;
+                scroll.destroy();
+            }
+            
+            if (html) html.remove();
+            items = null;
+            network = null;
+            scroll = null;
+            html = null;
+            body = null;
+            last = null;
+        };
+        
+        this.back = function () {
+            Lampa.Activity.backward();
+        };
+    }
+
+    // Инициализация плагина
     function startPlugin() {
         if (window.plugin_hanime_catalog_ready) return;
         window.plugin_hanime_catalog_ready = true;
         
+        // Регистрация шаблонов и компонентов
         Lampa.Template.add('standard-lampa-card', standardLampaCardTemplate);
-        Lampa.Component.add('hanime_catalog', HanimeComponent);
+        Lampa.Component.add('hanime_catalog', HanimeCatalogComponent);
+        Lampa.Component.add('hanime_section', HanimeSectionComponent);
         
+        // Добавление пункта меню
         function addMenuItem() {
             var menu_item = $(`
                 <li class="menu__item selector">
@@ -279,14 +457,14 @@
                             <path d="M8 5v14l11-7z"></path>
                         </svg>
                     </div>
-                    <div class="menu__text">Hanime Catalog</div>
+                    <div class="menu__text">Hanime Каталог</div>
                 </li>
             `);
             
             menu_item.on('hover:enter', function () {
                 Lampa.Activity.push({
                     url: '',
-                    title: 'Hanime Catalog',
+                    title: 'Hanime Каталог',
                     component: 'hanime_catalog',
                     page: 1
                 });
@@ -305,6 +483,6 @@
             });
         }
     }
-
+    
     startPlugin();
 })();
