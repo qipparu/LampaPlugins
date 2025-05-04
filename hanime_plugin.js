@@ -127,7 +127,10 @@
 
             cardElement.on('hover:focus', () => {
               last = cardElement[0];
-              horizontalScroll.update(cardElement, true);
+
+              if (cardElement && cardElement[0] && typeof cardElement[0].getBoundingClientRect === 'function') {
+                horizontalScroll.update(cardElement, true);
+              }
             }).on('hover:enter', () => {
               _this.fetchStreamAndMeta(meta.id, meta);
             });
