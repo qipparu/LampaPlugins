@@ -11,33 +11,6 @@
         </div>
     `;
 
-    // Ручное добавление CSS-стилей для горизонтального скролла
-    var style = document.createElement('style');
-    style.textContent = `
-        .items-line {
-            display: flex;
-            overflow-x: auto;
-            gap: 10px;
-            padding: 10px;
-            -webkit-overflow-scrolling: touch;
-        }
-        .card {
-            flex: 0 0 auto;
-            width: 150px;
-            height: auto;
-        }
-        .card__img {
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-        .scroll--horizontal {
-            overflow-x: auto;
-        }
-        .scroll__body {
-            display: flex;
-            gap: 10px;
-        }
-    `;
     document.head.appendChild(style);
 
     function HanimeCard(data) {
