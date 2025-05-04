@@ -1,6 +1,11 @@
 (function () {
     'use strict';
 
+    // Определяем адрес локального прокси/помощника, как в других рабочих плагинах
+    var Defined = {
+        localhost: 'http://77.91.84.6:9118/'
+    };
+
     function HanimeCard(data) {
         var cardTemplate = Lampa.Template.get('hanime-card', {
             id: data.id,
@@ -32,7 +37,7 @@
 
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
-        var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
+        //var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json"; // Эта ссылка вернет данные, но поток нужно проксировать
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
 
         this.fetchCatalog = function () {
@@ -79,7 +84,8 @@
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
-                    _this.fetchStreamAndMeta(meta.id, meta);
+                    // Теперь вызываем новую функцию, которая сначала получает данные о потоке, а потом запускает плеер через прокси
+                    _this.playStream(meta.id, meta);
                 });
 
                 body.append(cardElement);
@@ -92,76 +98,77 @@
             _this.activity.toggle();
         };
 
-        this.fetchStreamAndMeta = function (id, meta) {
+        // *** НОВАЯ ФУНКЦИЯ для получения данных о потоке и запуска через прокси ***
+        this.playStream = function(id, meta) {
             var _this = this;
-            var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
+             var streamDataUrl = API_BASE_URL + "/stream/movie/" + id + ".json";
 
-            _this.activity.loader(true);
+            _this.activity.loader(true); // Показываем загрузчик
 
-            Promise.all([
-                new Promise((resolve, reject) => {
-                    network.native(streamUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
-                }),
-                 meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
-                     network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
-                })
+            network.native(streamDataUrl,
+                function(streamData) {
+                     _this.activity.loader(false); // Скрываем загрузчик после получения данных
 
-            ]).then(([streamData, metaDataResponse]) => {
-                 _this.activity.loader(false);
+                    console.log("Stream Data:", streamData);
 
-                 const fullMetaData = metaDataResponse.meta || metaDataResponse;
+                    if (streamData && streamData.streams && streamData.streams.length > 0) {
+                        var streamToPlay = streamData.streams[0]; // Берем первый поток
 
-                console.log("Stream Data:", streamData);
-                console.log("Full Meta Data:", fullMetaData);
+                        if (streamToPlay.url) {
+                            // *** Маршрутизируем URL потока через локальный прокси ***
+                            // Предполагаем, что прокси принимает URL как параметр "url"
+                            var proxiedStreamUrl = Defined.localhost + 'stream?url=' + encodeURIComponent(streamToPlay.url); // Это предположение
 
-                if (streamData && streamData.streams && streamData.streams.length > 0) {
-                    var streamToPlay = streamData.streams[0];
+                            var playerObject = {
+                                title: meta.name || meta.title || 'Без названия',
+                                url: proxiedStreamUrl, // Используем проксированную ссылку
+                                poster: meta.poster || meta.background,
+                                behaviorHints: {
+                                     proxyHeaders: true // Сохраняем эту подсказку, она может быть нужна
+                                }
+                            };
 
-                    var playerObject = {
-                        title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                        url: streamToPlay.url,
-                        poster: fullMetaData.poster || fullMetaData.background,
-                        // *** ДОБАВЛЕНО: Подсказка для плеера использовать прокси ***
-                        behaviorHints: {
-                             proxyHeaders: true
+                            console.log("Launching player with proxied URL:", playerObject);
+                            Lampa.Player.play(playerObject);
+                            Lampa.Player.playlist([playerObject]);
+
+                            if (meta) {
+                                const historyMeta = {
+                                    id: meta.id,
+                                    title: meta.name || meta.title,
+                                    poster: meta.poster || meta.background,
+                                    runtime: meta.runtime,
+                                    year: meta.year,
+                                    original_name: meta.original_name
+                                };
+                                Lampa.Favorite.add('history', historyMeta, 100);
+                            }
+
+                        } else {
+                            Lampa.Noty.show('Не удалось получить ссылку на поток из данных.');
+                             console.error("Hanime Plugin: Stream URL missing in stream data:", streamData);
                         }
-                        // ****************************************************
-                    };
-
-                    if (playerObject.url) {
-                         console.log("Launching player with:", playerObject);
-                         Lampa.Player.play(playerObject);
-                         Lampa.Player.playlist([playerObject]);
-
-                         if (fullMetaData) {
-                               const historyMeta = {
-                                   id: fullMetaData.id,
-                                   title: fullMetaData.name || fullMetaData.title,
-                                   poster: fullMetaData.poster || fullMetaData.background,
-                                   runtime: fullMetaData.runtime,
-                                   year: fullMetaData.year,
-                                   original_name: fullMetaData.original_name
-                               };
-                              Lampa.Favorite.add('history', historyMeta, 100);
-                         }
 
                     } else {
-                         Lampa.Noty.show('Не удалось получить ссылку на поток.');
-                         console.error("Hanime Plugin: No valid stream URL found in stream data:", streamData);
+                        Lampa.Noty.show('Потоки не найдены для этого аниме.');
+                         console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
                     }
 
-                } else {
-                     Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                     console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
+                },
+                function(errorStatus, errorText) {
+                     _this.activity.loader(false); // Скрываем загрузчик при ошибке
+                    console.error("Hanime Plugin: Failed to fetch stream data", errorStatus, errorText);
+                    Lampa.Noty.show('Ошибка загрузки потока: ' + errorStatus);
+                },
+                false,
+                {
+                    dataType: 'json',
+                    timeout: 10000
                 }
-
-            }).catch(error => {
-                 _this.activity.loader(false);
-                 console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
-                 Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
-            });
+            );
         };
+        // *** КОНЕЦ НОВОЙ ФУНКЦИИ ***
+
 
         this.empty = function (msg) {
             var empty = new Lampa.Empty({ message: msg });
