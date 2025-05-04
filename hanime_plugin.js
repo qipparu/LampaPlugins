@@ -2,7 +2,7 @@
     'use strict';
 
     // Перенесенные шаблоны и стили карточек из 1111.txt
-    // Переименованы, чтобы избежать конфликтов и показать происхождение/цель
+    // Адаптированы и переименованы. Убраны элементы типа, рейтинга, сезона, статуса.
     var hanimeShikimoriStyle = `
         .hanime-catalog__body.category-full {
             justify-content: space-around;
@@ -52,58 +52,7 @@
              text-align: center;
              color: #fff;
          }
-        .hanime-shikimori-card__description {
-            display: none;
-        }
-
-        /* Styles for Type, Rate, Season, Status from 1111.txt, adapted */
-        .hanime-shikimori-card__type {
-            position: absolute;
-            left: 0.8em; /* Adjusted position */
-            top: 0.8em; /* Adjusted position */
-            padding: .2em .4em; /* Reduced padding */
-            background:#ff4242;
-            color:#fff;
-            font-size:.7em; /* Reduced font size */
-            border-radius:.3em;
-            z-index: 2; /* Ensure it's above the image */
-        }
-        .hanime-shikimori-card__vote {
-             position: absolute;
-             right: 0.8em; /* Adjusted position */
-             top: 0.8em; /* Adjusted position */
-             padding: .2em .4em; /* Reduced padding */
-             background: rgba(0, 0, 0, 0.7); /* Dark background */
-             color: #fff;
-             font-size: .7em; /* Reduced font size */
-             border-radius: .3em;
-             z-index: 2; /* Ensure it's above the image */
-        }
-        .hanime-shikimori-card__season {
-            position:absolute;
-            left:-0.8em;
-            top:3.4em;
-            padding:.4em .4em;
-            background:#05f;
-            color:#fff;
-            font-size:.8em;
-            border-radius:.3em;
-            z-index: 2; /* Ensure it's above the image */
-        }
-        .hanime-shikimori-card__status {
-            position:absolute;
-            left:-0.8em;
-            bottom:1em;
-            padding:.4em .4em;
-            background:#ffe216;
-            color:#000;
-            font-size:.8em;
-            border-radius:.3em;
-            z-index: 2; /* Ensure it's above the image */
-        }
-        .hanime-shikimori-card__season.no-season { /* This class might not be needed if data is always mapped */
-            display: none;
-        }
+        /* Удалены стили для type, vote, season, status */
 
         /* Styles for header/filters from 1111.txt */
         .hanime-catalog .torrent-filter { /* Added .hanime-catalog prefix */
@@ -121,38 +70,29 @@
         }
     `;
 
+    // Модифицированный шаблон карточки, убраны элементы type, vote, season, status
     var hanimeShikimoriCardTemplate = `
         <div class="hanime-shikimori-card card selector layer--visible layer--render">
             <div class="hanime-shikimori-card__view">
                 <img src="{img}" class="hanime-shikimori-card__img" alt="{title}" loading="lazy" />
-                <div class="hanime-shikimori-card__type">{type}</div>
-                <div class="hanime-shikimori-card__vote">{rate}</div>
-                <div class="hanime-shikimori-card__season">{season}</div>
-                <div class="hanime-shikimori-card__status">{status}</div>
-            </div>
+                </div>
             <div class="hanime-shikimori-card__title">{title}</div>
         </div>
     `;
 
     // Модифицированная функция HanimeCard, использующая новый шаблон
     function HanimeCard(data) {
-        // Маппинг данных из Hanime API к полям шаблона Shikimori
-        // Некоторые поля (type, rate, season, status) могут быть недоступны или требовать обработки
+        // Маппинг данных из Hanime API к полям шаблона
         var cardTemplate = Lampa.Template.get('hanime-shikimori-card', {
-            // Hanime API fields: id, name, poster, year, type (string like 'movie')
+            // Hanime API fields: id, name, poster, year, type (string like 'movie'), score (might be present in some responses)
             id: data.id,
             img: data.poster,
             title: data.name,
-            // Поля из Shikimori, для которых у нас может не быть данных
-            // Попробуем использовать доступные данные или заглушки
-            type: data.type ? data.type.toUpperCase() : 'N/A', // Используем type из meta data если есть
-            rate: data.score ? data.score.toFixed(1) : 'N/A', // Используем score если есть
-            season: data.year ? data.year : 'N/A', // Используем год как "сезон" если есть
-            status: 'N/A' // Статус, вероятно, отсутствует в Hanime API
+            // Убраны поля type, rate, season, status из маппинга, т.к. они удалены из шаблона
         });
 
         var cardElement = $(cardTemplate);
-        cardElement.addClass('selector'); // Класс selector уже был в HanimeCard, оставляем
+        cardElement.addClass('selector');
 
         this.render = function () {
             return cardElement;
@@ -165,63 +105,45 @@
 
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
-        // Убрали mask: true и over: true, т.к. они в стилях 1111.txt для body
         var scroll = new Lampa.Scroll({ step: 250 });
         var items = [];
         var html = $('<div class="hanime-catalog"></div>');
         var body = $('<div class="hanime-catalog__body category-full"></div>');
-        // Перенесен HTML заголовка с кнопками фильтрации из 1111.txt
         var head = $("<div class='torrent-filter'><div class='LMEShikimori__home simple-button simple-button--filter selector'>Home</div><div class='LMEShikimori__search simple-button simple-button--filter selector'>Filter</div></div>");
 
         var active = 0;
         var last;
-        // Храним текущие параметры запроса (для пагинации и фильтрации)
-        var currentParams = componentObject || { page: 1 }; // Начальные параметры
+        var currentParams = componentObject || { page: 1 };
 
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
-        // URL для разных сортировок Hanime. Будут выбираться в зависимости от фильтра.
         var CATALOG_URLS = {
              newset: API_BASE_URL + "/catalog/movie/newset.json",
              recent: API_BASE_URL + "/catalog/movie/recent.json",
              mostlikes: API_BASE_URL + "/catalog/movie/mostlikes.json",
              mostviews: API_BASE_URL + "/catalog/movie/mostviews.json",
-             // Добавьте другие URL, если Hanime API предоставляет другие сортировки
         };
-        // Дефолтный URL, если сортировка не выбрана или не поддерживается
         var DEFAULT_CATALOG_URL = CATALOG_URLS.newset;
 
         var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
-        // --- Оставлено: Адрес вашего прокси сервера ---
         var PROXY_BASE_URL = "http://77.91.78.5:3000";
-        // ---------------------------------------------
 
 
-        // Перенесенная логика фильтрации и меню из 1111.txt
         this.headeraction = function () {
-             // Определение доступных фильтров.
-             // Важно: большинство этих фильтров (кроме sort) не поддерживаются Hanime API.
-             // Они будут отображаться в UI, но не будут влиять на API запрос.
              var filters = {};
 
-             // Пример фильтров из 1111.txt. Вам нужно адаптировать их под Hanime, если возможно.
-             // Для Hanime API, скорее всего, имеет смысл только фильтр 'sort',
-             // который будет выбирать один из предопределенных каталогов (newset, recent, etc.)
-
-             // Типы (можно оставить для UI, но не будет фильтровать API)
+             // Оставляем структуру фильтров, но знаем, что только 'sort' работает с API
              filters.AnimeKindEnum = {
                  title: 'Type',
                  items: [
                      { title: "Movie", code: "movie" },
-                     { title: "Series", code: "series" }, // Адаптировано для Hanime, если есть такой тип
-                     // Другие типы из Shikimori, которые не применимы к Hanime, можно убрать или оставить для UI
+                     { title: "Series", code: "series" },
                      { title: "OVA", code: "ova" },
                      { title: "ONA", code: "ona" },
                      { title: "Special", code: "special" },
                  ]
              };
 
-             // Статусы (не поддерживаются Hanime API)
              filters.status = {
                  title: 'Status',
                  items: [
@@ -231,16 +153,11 @@
                  ]
              };
 
-              // Жанры (не поддерживаются Hanime API)
              filters.genre = {
                  title: 'Genre',
-                 // Здесь должен быть список жанров, возможно, пустой или с заглушками
-                 // Если Hanime API не предоставляет список жанров, этот фильтр не будет работать.
-                 // Можете оставить его пустым [] или добавить заглушки.
-                 items: [] // Нет данных по жанрам из Hanime API
+                 items: []
              };
 
-             // Сортировка (единственный фильтр, который может влиять на API запрос Hanime)
              filters.sort = {
                  title: 'Sort',
                  items: [
@@ -248,27 +165,22 @@
                      { title: "Recent", code: "recent" },
                      { title: "Most Likes", code: "mostlikes" },
                      { title: "Most Views", code: "mostviews" },
-                     // Другие сортировки из Shikimori, которые не поддерживаются Hanime, можно убрать
-                     // { title: "By popularity", code: "popularity" },
-                     // { title: "In alphabetical order", code: "name" },
                  ]
              };
 
-             // Сезоны (не поддерживаются Hanime API)
              filters.seasons = {
                  title: 'Season',
-                 // Генерация сезонов из 1111.txt - не применима к Hanime
-                 items: [] // Нет данных по сезонам из Hanime API
+                 items: []
              };
 
 
              function queryForHanime() {
                  var query = {};
-                 // Собираем выбранные фильтры. Только 'sort' будет использоваться для API запроса.
+                 // Собираем выбранную сортировку
                  filters.sort.items.forEach(function (a) {
                      if (a.selected) query.sort = a.code;
                  });
-                 // Другие фильтры (kind, status, genre, seasons) собираются, но не используются в fetchCatalog
+                 // Другие фильтры собираются, но не используются для API запроса
                  filters.AnimeKindEnum.items.forEach(function (a) {
                       if (a.selected) query.kind = a.code;
                  });
@@ -276,7 +188,7 @@
                      if (a.selected) query.status = a.code;
                  });
                  filters.genre.items.forEach(function (a) {
-                     if (a.selected) query.genre = a.id; // Shikimori uses genre id
+                     if (a.selected) query.genre = a.id;
                  });
                  filters.seasons.items.forEach(function (a) {
                      if (a.selected) query.seasons = a.code;
@@ -317,8 +229,8 @@
                      title: 'Filters',
                      items: [
                          { title: Lampa.Lang.translate('search_start'), searchHanime: true },
-                         filters.sort, // Первым ставим сортировку, т.к. она работает
-                         filters.AnimeKindEnum, // Эти фильтры будут отображаться, но не фильтровать API
+                         filters.sort,
+                         filters.AnimeKindEnum,
                          filters.status,
                          filters.genre,
                          filters.seasons,
@@ -326,35 +238,29 @@
                      onBack: function onBack() {
                          Lampa.Controller.toggle("content");
                      },
+                     // !!! ИСПРАВЛЕНИЕ ОШИБКИ: Явно привязываем контекст this к функции search
                      onSelect: function onSelect(a) {
                          if (a.searchHanime) {
-                             search(); // Вызываем функцию поиска/фильтрации
+                             boundSearch(); // Вызываем привязанную функцию
                          } else submenu(a, mainMenu);
                      }
                  });
              }
 
-             // Функция поиска/фильтрации. Теперь она не создает новый компонент,
-             // а перезагружает текущий с новыми параметрами.
-             function search() {
+             // Привязываем функцию search к контексту компонента сразу
+             var boundSearch = (function search() {
                  var query = queryForHanime();
-                 // Обновляем текущие параметры компонента и сбрасываем страницу
                  currentParams = query;
-                 currentParams.page = 1; // Сбрасываем страницу при смене фильтров
+                 currentParams.page = 1;
 
-                 // Очищаем текущий список карточек
                  items.forEach(function(item) { item.destroy(); });
                  items = [];
-                 body.empty(); // Очищаем DOM контейнер
+                 body.empty();
 
-                 // Запускаем загрузку каталога с новыми параметрами
-                 this.fetchCatalog(currentParams);
+                 this.fetchCatalog(currentParams); // Теперь this ссылается на HanimeComponent
 
-                 Lampa.Controller.toggle("content"); // Возвращаемся к каталогу
-             }
-
-             // Привязываем функцию search к контексту компонента, чтобы она могла вызывать this.fetchCatalog
-             var boundSearch = search.bind(this);
+                 Lampa.Controller.toggle("content");
+             }).bind(this); // Привязываем контекст this здесь
 
 
              var serverElement = head.find('.LMEShikimori__search');
@@ -364,17 +270,13 @@
 
              var homeElement = head.find('.LMEShikimori__home');
              homeElement.on('hover:enter', function () {
-                 // При нажатии Home сбрасываем фильтры и загружаем дефолтный каталог
                  currentParams = { page: 1 };
                  items.forEach(function(item) { item.destroy(); });
                  items = [];
                  body.empty();
                  this.fetchCatalog(currentParams);
                  Lampa.Controller.toggle("content");
-             }.bind(this)); // Привязываем контекст
-
-              // Вызываем mainMenu при первом открытии фильтров, если нужно
-              // mainMenu();
+             }.bind(this));
          };
 
 
@@ -384,16 +286,8 @@
 
             network.clear();
 
-            // Определяем URL каталога на основе выбранной сортировки или используем дефолтный
-            var sortKey = params && params.sort ? params.sort : 'newset'; // По умолчанию Newset
+            var sortKey = params && params.sort ? params.sort : 'newset';
             var catalogUrl = CATALOG_URLS[sortKey] || DEFAULT_CATALOG_URL;
-
-            // TODO: Hanime API Stremio Addon не поддерживает пагинацию через page параметр в этих URL
-            // Если каталог очень большой, потребуется доработка API или клиентская пагинация/подгрузка
-            // Для данного примера, мы просто загружаем весь каталог с выбранной сортировкой.
-            // Если API будет поддерживать page, раскомментируйте строку ниже и используйте params.page
-            // catalogUrl += (catalogUrl.includes('?') ? '&' : '?') + 'page=' + params.page;
-
 
             console.log("Fetching catalog from:", catalogUrl);
 
@@ -401,51 +295,41 @@
                 function (data) {
                     if (data && data.metas && Array.isArray(data.metas)) {
                          if (data.metas.length > 0) {
-                            // Убираем старые элементы только если загружаем первую страницу (при смене фильтров)
-                            if (params.page === 1) {
+                             if (params.page === 1) {
                                 items.forEach(function(item) { item.destroy(); });
                                 items = [];
                                 body.empty();
                             }
                             _this.build(data.metas);
 
-                             // TODO: Проверка на наличие следующей страницы. Hanime API Stremio Addon может не предоставлять эту информацию.
-                             // Если API не предоставляет, пагинация "подгрузкой при скролле" работать не будет корректно.
-                             // Предполагаем, что API возвращает все сразу или нет явной пагинации.
-                             // Если бы пагинация была, тут была бы логика для определения scroll.onEnd
                          } else {
-                             // Если на первой странице нет данных, показываем empty
                              if (params.page === 1) {
                                 _this.empty("Каталог пуст по выбранным фильтрам.");
                              } else {
-                                // Если на не первой странице нет данных, значит конец списка
                                 Lampa.Noty.show("Конец списка");
                                 _this.activity.loader(false);
-                                Lampa.Controller.toggle('content'); // Возвращаемся к управлению каталогом
+                                Lampa.Controller.toggle('content');
                              }
                          }
                     } else {
-                        // Если на первой странице неверный формат или пусто
                          if (params.page === 1) {
                              _this.empty("Неверный формат данных от API или каталог пуст.");
                          } else {
                               Lampa.Noty.show("Ошибка при загрузке данных.");
                              _this.activity.loader(false);
                              console.error("Hanime Plugin: Invalid data format on scroll end", data);
-                              Lampa.Controller.toggle('content'); // Возвращаемся к управлению каталогом
+                             Lampa.Controller.toggle('content');
                          }
-
                          console.error("Hanime Plugin: Invalid data format", data);
                     }
                 },
                 function (errorStatus, errorText) {
-                    // Если на первой странице ошибка
                     if (params.page === 1) {
                         _this.empty("Не удалось загрузить каталог. Статус: " + errorStatus);
                     } else {
                          Lampa.Noty.show("Ошибка загрузки следующей страницы: " + errorStatus);
                          _this.activity.loader(false);
-                         Lampa.Controller.toggle('content'); // Возвращаемся к управлению каталогом
+                         Lampa.Controller.toggle('content');
                     }
                     console.error("Hanime Plugin: Failed to load catalog", errorStatus, errorText);
                 },
@@ -460,15 +344,12 @@
         this.build = function (result) {
             var _this = this;
 
-            // Очищаем body перед добавлением новых карточек (нужно при смене фильтров)
             if (currentParams.page === 1) {
                  body.empty();
-                 items = []; // Сбрасываем массив элементов
+                 items = [];
             }
 
-
             result.forEach(function (meta) {
-                // Передаем всю meta информацию в HanimeCard для использования доступных полей
                 var card = new HanimeCard(meta);
                 var cardElement = card.render();
 
@@ -478,92 +359,74 @@
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
-                    _this.fetchStreamAndMeta(meta.id, meta); // Передаем meta дальше
+                    _this.fetchStreamAndMeta(meta.id, meta);
                 });
 
                 body.append(cardElement);
                 items.push(card);
             });
 
-             // Добавляем head и body к scroll только один раз при первом построении
             if (scroll.render().find('.torrent-filter').length === 0) {
                  scroll.append(head);
             }
-             // Проверяем, что body уже добавлен, чтобы не дублировать
              if (scroll.render().find('.hanime-catalog__body').length === 0) {
                  scroll.append(body);
              }
 
-
-            // Добавляем scroll к html контейнеру
             if (html.find('.scroll-box').length === 0) {
                 html.append(scroll.render(true));
             }
 
-
             _this.activity.loader(false);
             _this.activity.toggle();
 
-             // Логика подгрузки следующей страницы при скролле
-             // Учитывая, что Hanime API Stremio Addon может не поддерживать пагинацию,
-             // этот код может загружать весь каталог за один раз или некорректно работать.
-             // Если API поддерживает пагинацию, нужно модифицировать fetchCatalog и эту часть.
-             // Если пагинации нет, возможно, стоит отключить onEnd или показывать "Конец списка" сразу.
-             // Оставляем логику onEnd, предполагая возможность будущей поддержки пагинации API.
+             // TODO: Пагинация по скроллу остается как TODO, т.к. Hanime API может не поддерживать page параметр.
+             // Если API загружает весь список сразу, onEnd не должен делать повторный запрос.
+             // В текущей реализации он будет пытаться загрузить "следующую страницу" по тому же URL, что может привести к бесконечной загрузке или ошибкам.
+             // Если API действительно не поддерживает пагинацию, этот onEnd нужно отключить или изменить логику.
              scroll.onEnd = function () {
-                // Увеличиваем номер страницы
-                currentParams.page++;
-                console.log("Fetching next page:", currentParams.page, "with params:", currentParams);
-                // Запускаем загрузку следующей страницы с текущими параметрами
-                _this.fetchCatalog(currentParams);
-            };
+                 // Убрано увеличение page++, т.к. API не поддерживает пагинацию.
+                 // Вместо этого можно просто показать сообщение или ничего не делать.
+                 console.log("Reached end of scroll.");
+                 // Lampa.Noty.show("Конец списка"); // Можно добавить уведомление
+                 // _this.activity.loader(false); // Убираем лоадер, если был
+                 // Lampa.Controller.toggle('content'); // Возвращаемся к управлению
+             };
         };
 
         this.fetchStreamAndMeta = function (id, meta) {
             var _this = this;
             var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
-            // Используем meta, которое получили из каталога, чтобы не делать лишний запрос meta/movie/{id}.json
-            // Если по каким-то причинам meta в каталоге неполное, можно сделать запрос metaUrl
-            // var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
-
 
             _this.activity.loader(true);
 
-            // Запрос потока
             network.native(streamUrl,
                 function(streamData) {
                      _this.activity.loader(false);
 
-                     const fullMetaData = meta; // Используем meta из каталога
+                     const fullMetaData = meta;
 
                      console.log("Stream Data:", streamData);
                      console.log("Full Meta Data:", fullMetaData);
 
                      if (streamData && streamData.streams && streamData.streams.length > 0) {
-                         var streamToPlay = streamData.streams[0]; // Берем первый поток
+                         var streamToPlay = streamData.streams[0];
 
-                         // --- Изменено: Использование прокси для URL потока ---
                          var finalStreamUrl = streamToPlay.url;
-                         // Проверяем, является ли URL потока тем, который вызывает проблему CORS (на highwinds-cdn.com)
-                         // Если да, оборачиваем его прокси
                          try {
                               var url = new URL(finalStreamUrl);
-                              if (url.hostname.includes('highwinds-cdn.com') || url.hostname.includes('proxy.hentai.stream')) { // Добавлен еще один домен для проксирования
-                                  // Оборачиваем оригинальный URL потока адресом прокси
+                              if (url.hostname.includes('highwinds-cdn.com') || url.hostname.includes('proxy.hentai.stream')) {
                                   finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
                                   console.log("Original stream URL proxied:", finalStreamUrl);
                               }
                          } catch (e) {
                              console.error("Hanime Plugin: Failed to parse or proxy stream URL", e);
-                             // Продолжаем использовать оригинальный URL, если не удалось обработать
                          }
-                         // -------------------------------------------------------
-
 
                          var playerObject = {
                              title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                             url: finalStreamUrl, // Используем URL после возможного проксирования
-                             poster: fullMetaData.poster || fullMetaData.background, // Используем poster из meta
+                             url: finalStreamUrl,
+                             poster: fullMetaData.poster || fullMetaData.background,
                          };
 
                          if (playerObject.url) {
@@ -572,16 +435,10 @@
                               Lampa.Player.playlist([playerObject]);
 
                               if (fullMetaData) {
-                                     // Адаптируем сохранение истории под поля Hanime meta data
                                      const historyMeta = {
                                          id: fullMetaData.id,
                                          title: fullMetaData.name || fullMetaData.title,
                                          poster: fullMetaData.poster || fullMetaData.background,
-                                         // У Hanime API Stremio Addon нет runtime, year, original_name в метаданных каталога
-                                         // Если они появятся в будущем или доступны по отдельному запросу, добавьте их здесь.
-                                         // runtime: fullMetaData.runtime,
-                                         // year: fullMetaData.year,
-                                         // original_name: fullMetaData.original_name
                                      };
                                      Lampa.Favorite.add('history', historyMeta, 100);
                               }
@@ -612,14 +469,11 @@
 
         this.empty = function (msg) {
             var empty = new Lampa.Empty({ message: msg });
-            // Очищаем и добавляем заглушку в scroll.render()
             scroll.render().empty().append(empty.render(true));
 
-            // Обновляем html контейнер, если он еще не содержит scroll
             if (html.find('.scroll-box').length === 0) {
                  html.append(scroll.render(true));
             }
-
 
             this.activity.loader(false);
             this.activity.toggle();
@@ -627,10 +481,8 @@
         };
 
         this.create = function () {
-            // Инициализируем header с фильтрами
              this.headeraction();
-            // Запускаем первую загрузку каталога с начальными параметрами (или дефолтными)
-            this.fetchCatalog(currentParams);
+             this.fetchCatalog(currentParams);
         };
 
         this.start = function () {
@@ -647,11 +499,11 @@
                 right: function () {
                     if (Navigator.canmove('right')) Navigator.move('right');
                     else {
-                        // Привязываем кнопку Filter к навигатору вправо от последней карточки
                         var filterButton = head.find('.LMEShikimori__search')[0];
-                         if (filterButton && last && last.contains(Navigator.focused())) {
+                         if (filterButton && last && body[0].contains(Navigator.focused())) { // Проверяем, что фокус на карточке
                               Lampa.Controller.collectionFocus(filterButton);
                          } else {
+                             // Если не на карточке или нет кнопки фильтра, пробуем обычный move right
                              Navigator.move('right');
                          }
                     }
@@ -659,7 +511,6 @@
                 up: function () {
                     if (Navigator.canmove('up')) Navigator.move('up');
                     else {
-                         // Привязываем навигацию вверх с карточек к Header
                          if (body[0].contains(Navigator.focused())) {
                              var homeButton = head.find('.LMEShikimori__home')[0];
                               if(homeButton) Lampa.Controller.collectionFocus(homeButton);
@@ -686,15 +537,19 @@
         this.destroy = function () {
             network.clear();
             Lampa.Arrays.destroy(items);
-            if (scroll) scroll.destroy(); // Проверяем перед уничтожением
-            if (html) html.remove();     // Проверяем перед удалением
+            if (scroll) {
+                scroll.onEnd = null; // Убираем обработчик onEnd при уничтожении
+                scroll.destroy();
+            }
+            if (html) html.remove();
             items = null;
             network = null;
             scroll = null;
             html = null;
             body = null;
-            head = null; // Очищаем ссылку на header
+            head = null;
             last = null;
+            currentParams = null; // Очищаем параметры
         };
         this.back = function () {
             Lampa.Activity.backward();
@@ -706,7 +561,6 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        // Добавляем новые шаблоны и стили
         Lampa.Template.add('hanime-shikimori-style', hanimeShikimoriStyle);
         Lampa.Template.add('hanime-shikimori-card', hanimeShikimoriCardTemplate);
 
@@ -725,17 +579,15 @@
             `);
             menu_item.on('hover:enter', function () {
                 Lampa.Activity.push({
-                    url: '', // url может быть пустым, т.к. fetchCatalog вызывается с params
+                    url: '',
                     title: 'Hanime Catalog',
                     component: 'hanime_catalog',
-                    page: 1 // Начальная страница
-                    // Здесь можно передать начальные параметры сортировки, например: sort: 'newset'
+                    page: 1
                 });
             });
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
-        // Применяем стили
         $('head').append(Lampa.Template.get('hanime-shikimori-style', {}, true));
 
         if (window.appready) {
