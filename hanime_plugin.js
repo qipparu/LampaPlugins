@@ -107,7 +107,7 @@
                     const horizontalScroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
                     const scrollContainer = $('<div class="items-line__body"></div>').append(horizontalScroll.render());
                     
-                    // Обработчик клика на "Еще"
+                    // Добавляем обработчик клика на "Еще"
                     sectionHeader.find('.items-line__more').on('hover:enter', () => {
                         Lampa.Activity.push({
                             url: '',
