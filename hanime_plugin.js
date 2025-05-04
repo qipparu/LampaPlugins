@@ -1,5 +1,5 @@
 /**
- * Lampa Plugin: Hanime Catalog
+ * Lam2pa Plugin: Hanime Catalog
  * Description: Displays anime cards fetched from the Hanime Stremio API.
  */
 
