@@ -183,8 +183,8 @@
                                 items.forEach(function(item) { item.destroy(); });
                                 items = [];
                                 body.empty(); // Очищаем DOM контейнер перед добавлением новых карточек
-                            }
-                            _this.build(data.metas);
+                             }
+                             _this.build(data.metas);
 
                          } else {
                              if (params.page === 1) {
@@ -271,9 +271,10 @@
             _this.activity.loader(false);
             _this.activity.toggle();
 
-             // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
+             // Обработчик конца скролла (пагинация не поддерживается API)
              scroll.onEnd = function () {
-                 console.log("Reached end of scroll. Pagination is not supported by this API.");
+                 // Убрано сообщение о конце списка
+                 // console.log("Reached end of scroll. Pagination is not supported by this API.");
                  // Lampa.Noty.show("Конец списка");
              };
         };
@@ -425,7 +426,7 @@
             network.clear();
             Lampa.Arrays.destroy(items);
             if (scroll) {
-                scroll.onEnd = null;
+                scroll.onEnd = null; // Убираем обработчик при уничтожении
                 scroll.destroy();
             }
             if (html) html.remove();
