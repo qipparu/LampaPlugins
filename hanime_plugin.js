@@ -80,15 +80,14 @@
         </div>
     `;
 
-    // Модифицированная функция HanimeCard, использующая новый шаблон
+    // Модифицированная функция HanimeCard
     function HanimeCard(data) {
         // Маппинг данных из Hanime API к полям шаблона
         var cardTemplate = Lampa.Template.get('hanime-shikimori-card', {
-            // Hanime API fields: id, name, poster, year, type (string like 'movie'), score (might be present in some responses)
             id: data.id,
             img: data.poster,
             title: data.name,
-            // Убраны поля type, rate, season, status из маппинга, т.к. они удалены из шаблона
+            // Поля type, rate, season, status больше не нужны в шаблоне
         });
 
         var cardElement = $(cardTemplate);
@@ -132,32 +131,7 @@
         this.headeraction = function () {
              var filters = {};
 
-             // Оставляем структуру фильтров, но знаем, что только 'sort' работает с API
-             filters.AnimeKindEnum = {
-                 title: 'Type',
-                 items: [
-                     { title: "Movie", code: "movie" },
-                     { title: "Series", code: "series" },
-                     { title: "OVA", code: "ova" },
-                     { title: "ONA", code: "ona" },
-                     { title: "Special", code: "special" },
-                 ]
-             };
-
-             filters.status = {
-                 title: 'Status',
-                 items: [
-                     { title: "Planned", code: "anons" },
-                     { title: "Airing", code: "ongoing" },
-                     { title: "Released", code: "released" }
-                 ]
-             };
-
-             filters.genre = {
-                 title: 'Genre',
-                 items: []
-             };
-
+             // Оставляем только фильтр сортировки
              filters.sort = {
                  title: 'Sort',
                  items: [
@@ -168,11 +142,7 @@
                  ]
              };
 
-             filters.seasons = {
-                 title: 'Season',
-                 items: []
-             };
-
+             // Удалены определения фильтров AnimeKindEnum, status, genre, seasons
 
              function queryForHanime() {
                  var query = {};
@@ -180,19 +150,7 @@
                  filters.sort.items.forEach(function (a) {
                      if (a.selected) query.sort = a.code;
                  });
-                 // Другие фильтры собираются, но не используются для API запроса
-                 filters.AnimeKindEnum.items.forEach(function (a) {
-                      if (a.selected) query.kind = a.code;
-                 });
-                 filters.status.items.forEach(function (a) {
-                     if (a.selected) query.status = a.code;
-                 });
-                 filters.genre.items.forEach(function (a) {
-                     if (a.selected) query.genre = a.id;
-                 });
-                 filters.seasons.items.forEach(function (a) {
-                     if (a.selected) query.seasons = a.code;
-                 });
+                 // Другие фильтры больше не собираются
                  return query;
              }
 
@@ -229,16 +187,12 @@
                      title: 'Filters',
                      items: [
                          { title: Lampa.Lang.translate('search_start'), searchHanime: true },
-                         filters.sort,
-                         filters.AnimeKindEnum,
-                         filters.status,
-                         filters.genre,
-                         filters.seasons,
+                         filters.sort, // Оставляем только сортировку
+                         // Удалены пункты меню для AnimeKindEnum, status, genre, seasons
                      ],
                      onBack: function onBack() {
                          Lampa.Controller.toggle("content");
                      },
-                     // !!! ИСПРАВЛЕНИЕ ОШИБКИ: Явно привязываем контекст this к функции search
                      onSelect: function onSelect(a) {
                          if (a.searchHanime) {
                              boundSearch(); // Вызываем привязанную функцию
@@ -247,7 +201,6 @@
                  });
              }
 
-             // Привязываем функцию search к контексту компонента сразу
              var boundSearch = (function search() {
                  var query = queryForHanime();
                  currentParams = query;
@@ -257,10 +210,10 @@
                  items = [];
                  body.empty();
 
-                 this.fetchCatalog(currentParams); // Теперь this ссылается на HanimeComponent
+                 this.fetchCatalog(currentParams);
 
                  Lampa.Controller.toggle("content");
-             }).bind(this); // Привязываем контекст this здесь
+             }).bind(this);
 
 
              var serverElement = head.find('.LMEShikimori__search');
@@ -380,17 +333,10 @@
             _this.activity.loader(false);
             _this.activity.toggle();
 
-             // TODO: Пагинация по скроллу остается как TODO, т.к. Hanime API может не поддерживать page параметр.
-             // Если API загружает весь список сразу, onEnd не должен делать повторный запрос.
-             // В текущей реализации он будет пытаться загрузить "следующую страницу" по тому же URL, что может привести к бесконечной загрузке или ошибкам.
-             // Если API действительно не поддерживает пагинацию, этот onEnd нужно отключить или изменить логику.
+             // Логика пагинации по скроллу отключена (см. комментарии в fetchCatalog)
              scroll.onEnd = function () {
-                 // Убрано увеличение page++, т.к. API не поддерживает пагинацию.
-                 // Вместо этого можно просто показать сообщение или ничего не делать.
-                 console.log("Reached end of scroll.");
-                 // Lampa.Noty.show("Конец списка"); // Можно добавить уведомление
-                 // _this.activity.loader(false); // Убираем лоадер, если был
-                 // Lampa.Controller.toggle('content'); // Возвращаемся к управлению
+                 console.log("Reached end of scroll. Pagination is not supported by this API.");
+                 // Lampa.Noty.show("Конец списка");
              };
         };
 
@@ -489,41 +435,50 @@
             if (Lampa.Activity.active().activity !== this.activity) return;
             Lampa.Controller.add('content', {
                 toggle: function () {
+                    // Установка коллекции элементов для навигации стрелками
                     Lampa.Controller.collectionSet(scroll.render());
+                    // Фокусировка на последнем активном элементе или первом
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 left: function () {
+                    // Логика навигации влево
                     if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
+                    else Lampa.Controller.toggle('menu'); // Переход в главное меню Lampa
                 },
                 right: function () {
+                    // Логика навигации вправо
                     if (Navigator.canmove('right')) Navigator.move('right');
                     else {
+                        // При навигации вправо с последней карточки, попробовать переместить фокус на кнопку фильтра
                         var filterButton = head.find('.LMEShikimori__search')[0];
-                         if (filterButton && last && body[0].contains(Navigator.focused())) { // Проверяем, что фокус на карточке
+                         if (filterButton && last && body[0].contains(Navigator.focused())) {
                               Lampa.Controller.collectionFocus(filterButton);
                          } else {
-                             // Если не на карточке или нет кнопки фильтра, пробуем обычный move right
+                             // Если не на карточке или нет кнопки фильтра, выполнить обычный move right
                              Navigator.move('right');
                          }
                     }
                 },
                 up: function () {
+                    // Логика навигации вверх
                     if (Navigator.canmove('up')) Navigator.move('up');
                     else {
+                         // При навигации вверх с первой строки карточек, попробовать переместить фокус на кнопки в Header
                          if (body[0].contains(Navigator.focused())) {
                              var homeButton = head.find('.LMEShikimori__home')[0];
                               if(homeButton) Lampa.Controller.collectionFocus(homeButton);
                          } else {
-                             Lampa.Controller.toggle('head');
+                             Lampa.Controller.toggle('head'); // Переход в стандартный заголовок Lampa
                          }
                     }
                 },
                 down: function () {
+                    // Логика навигации вниз
                     if (Navigator.canmove('down')) Navigator.move('down');
                 },
-                back: this.back
+                back: this.back // Назначение кнопки "назад"
             });
+            // Переключаем управление на наш компонент "content"
             Lampa.Controller.toggle('content');
         };
 
@@ -538,7 +493,7 @@
             network.clear();
             Lampa.Arrays.destroy(items);
             if (scroll) {
-                scroll.onEnd = null; // Убираем обработчик onEnd при уничтожении
+                scroll.onEnd = null;
                 scroll.destroy();
             }
             if (html) html.remove();
@@ -549,7 +504,7 @@
             body = null;
             head = null;
             last = null;
-            currentParams = null; // Очищаем параметры
+            currentParams = null;
         };
         this.back = function () {
             Lampa.Activity.backward();
@@ -561,6 +516,7 @@
 
         window.plugin_hanime_catalog_ready = true;
 
+        // Добавляем шаблоны и стили
         Lampa.Template.add('hanime-shikimori-style', hanimeShikimoriStyle);
         Lampa.Template.add('hanime-shikimori-card', hanimeShikimoriCardTemplate);
 
@@ -588,6 +544,7 @@
             $('.menu .menu__list').eq(0).append(menu_item);
         }
 
+        // Применяем стили
         $('head').append(Lampa.Template.get('hanime-shikimori-style', {}, true));
 
         if (window.appready) {
