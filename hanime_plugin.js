@@ -83,7 +83,7 @@
                     scroll.update(cardElement, true);
                 }).on('hover:enter', function () {
                     console.log("Selected Anime:", meta.id, meta.name);
-                    // Вызываем функцию для получения данных о потоке и запуска через механизм Lampac
+                    // Вызываем функцию для получения данных о потоке и запроса к прокси Lampac
                     _this.playStream(meta.id, meta);
                 });
 
@@ -97,7 +97,7 @@
             _this.activity.toggle();
         };
 
-        // Функция для получения данных о потоке с API и запуска воспроизведения через механизм Lampac
+        // Функция для получения данных о потоке с API и запроса рабочей ссылки у прокси Lampac
         this.playStream = function(id, meta) {
             var _this = this;
              // URL для получения данных о потоках из исходного API Stremio add-on
@@ -105,95 +105,109 @@
 
             _this.activity.loader(true); // Показываем загрузчик
 
-            // Загружаем данные о потоках
+            // Шаг 1: Загружаем данные о потоках из Stremio add-on API
             network.native(streamDataUrl,
                 function(streamData) {
-                     _this.activity.loader(false); // Скрываем загрузчик после получения данных
-
                     console.log("Stream Data from API:", streamData);
 
                     if (streamData && streamData.streams && streamData.streams.length > 0) {
-                        // Берем первый поток из списка, как наиболее вероятный для Lampac
+                        // Берем первый поток из списка
                         var streamToPlay = streamData.streams[0];
 
                         if (streamToPlay.url) {
-                            console.log("Attempting to play stream using Lampac mechanism for URL:", streamToPlay.url);
+                            console.log("Original Stream URL from API:", streamToPlay.url);
+                            console.log("Attempting to get playable URL from Lampac proxy...");
 
-                            // *** ИСПОЛЬЗУЕМ МЕХАНИЗМ LAMPAC ДЛЯ ВОСПРОИЗВЕДЕНИЯ ***
-                            // Предполагаем, что после загрузки invc-rch.js доступен глобальный объект window.rch
-                            // и у него есть функция для обработки потоков, например, `play` или `handleStream`.
-                            // Это предположение, так как API invc-rch.js неизвестен.
-                            // Самый простой вариант - передать исходный URL потока или объект потока в функцию rch
-                            // Или LampacPlayer ожидает специфичный формат данных, который rch помогает создать.
+                            // Шаг 2: Запрашиваем у прокси Lampac рабочую ссылку для этого потока
+                            // Предполагаем эндпоинт /play_url и передачу исходного URL как параметра 'url'
+                            var lampacProxyResolveUrl = Defined.localhost + 'play_url?url=' + encodeURIComponent(streamToPlay.url); // !!! Это предположение !!!
 
-                            // Попробуем передать URL и метаданные в функцию Lampac (предположение)
-                            if (window.rch && typeof window.rch.play === 'function') {
-                                // Если rch.play существует, используем его
-                                console.log("Using window.rch.play");
-                                // Формат параметров для rch.play неизвестен, попробуем передать самое необходимое
-                                window.rch.play({
-                                     url: streamToPlay.url,
-                                     title: meta.name || meta.title,
-                                     poster: meta.poster || meta.background,
-                                     // Возможно, rch требует специфичные behaviorHints или другие поля
-                                     behaviorHints: streamToPlay.behaviorHints
-                                }, meta); // Передаем метаданные полностью тоже на всякий случай
+                            network.native(lampacProxyResolveUrl,
+                                function(proxyResponse) {
+                                    // Предполагаем, что прокси отвечает с рабочей ссылкой (может быть plain text или в JSON)
+                                    _this.activity.loader(false); // Скрываем загрузчик
 
-                            } else {
-                                // Если rch.play не найден, возвращаемся к попытке использовать Lampa.Player.play
-                                // с проксированной ссылкой (хотя она дала 404) или исходной с behaviorHints
-                                console.warn("Hanime Plugin: window.rch.play not found. Falling back to Lampa.Player.play with proxy hint.");
+                                    var finalPlayableUrl = typeof proxyResponse === 'string' ? proxyResponse : (proxyResponse && proxyResponse.url ? proxyResponse.url : null);
 
-                                // Попробуем использовать Lampa.Player.play с исходным URL и подсказкой прокси
-                                // (Возможно, Lampac Player сам умеет использовать внутренний прокси с этой подсказкой)
-                                var playerObject = {
-                                    title: meta.name || meta.title || 'Без названия',
-                                    url: streamToPlay.url, // Используем исходный URL
-                                    poster: meta.poster || meta.background,
-                                    behaviorHints: {
-                                         proxyHeaders: true // Снова добавляем подсказку
-                                         // Возможно, нужны и другие behaviorHints из streamToPlay.behaviorHints
+                                    if (finalPlayableUrl) {
+                                        console.log("Received playable URL from Lampac proxy:", finalPlayableUrl);
+
+                                        // Шаг 3: Запускаем плеер Lampa с полученной рабочей ссылкой
+                                        var playerObject = {
+                                            title: meta.name || meta.title || 'Без названия',
+                                            url: finalPlayableUrl, // Используем ссылку от прокси Lampac
+                                            poster: meta.poster || meta.background,
+                                            // Возможно, подсказка прокси все еще нужна для плеера Lampac
+                                            behaviorHints: { proxyHeaders: true }
+                                        };
+
+                                        console.log("Launching Lampa.Player.play with final URL:", playerObject);
+                                        Lampa.Player.play(playerObject);
+                                        Lampa.Player.playlist([playerObject]);
+
+                                        if (meta) {
+                                            // Добавляем в историю Lampac
+                                            const historyMeta = {
+                                                id: meta.id,
+                                                title: meta.name || meta.title,
+                                                poster: meta.poster || meta.background,
+                                                runtime: meta.runtime,
+                                                year: meta.year,
+                                                original_name: meta.original_name
+                                            };
+                                            Lampa.Favorite.add('history', historyMeta, 100);
+                                        }
+
+                                    } else {
+                                        Lampa.Noty.show('Прокси Lampac не вернул ссылку на поток.');
+                                        console.error("Hanime Plugin: Lampac proxy response did not contain a playable URL:", proxyResponse);
                                     }
-                                };
+                                },
+                                function(errorStatus, errorText) {
+                                    _this.activity.loader(false); // Скрываем загрузчик при ошибке запроса к прокси
+                                    console.error("Hanime Plugin: Failed to get playable URL from Lampac proxy", errorStatus, errorText);
+                                    Lampa.Noty.show('Ошибка прокси Lampac при получении ссылки: ' + errorStatus);
 
-                                if (playerObject.url) {
-                                     console.log("Launching Lampa.Player.play with proxy hint:", playerObject);
-                                     Lampa.Player.play(playerObject);
-                                     // Lampa.Player.playlist([playerObject]); // Плейлист можно добавить при необходимости
-                                } else {
-                                     Lampa.Noty.show('Не удалось получить ссылку на поток для плеера.');
-                                     console.error("Hanime Plugin: Final stream URL is empty.");
+                                    // Резервный вариант: попробовать воспроизвести исходную ссылку с подсказкой прокси
+                                    console.warn("Hanime Plugin: Lampac proxy failed, attempting direct play fallback with proxy hint.");
+                                     var playerObject = {
+                                         title: meta.name || meta.title || 'Без названия',
+                                         url: streamToPlay.url, // Исходная ссылка
+                                         poster: meta.poster || meta.background,
+                                         behaviorHints: { proxyHeaders: true } // Подсказка прокси
+                                     };
+                                     if (playerObject.url) {
+                                         console.log("Launching Lampa.Player.play with fallback URL:", playerObject);
+                                         Lampa.Player.play(playerObject);
+                                         Lampa.Player.playlist([playerObject]);
+                                     } else {
+                                          Lampa.Noty.show('Не удалось получить ссылку на поток для резервного воспроизведения.');
+                                     }
+                                },
+                                false, // Нет POST данных
+                                { // Опции
+                                    dataType: 'text', // Предполагаем, что прокси возвращает plain text URL, может потребоваться 'json'
+                                    timeout: 15000 // Таймаут для запроса к прокси
                                 }
-                            }
-
-                            if (meta) {
-                                // Добавляем в историю Lampac
-                                const historyMeta = {
-                                    id: meta.id,
-                                    title: meta.name || meta.title,
-                                    poster: meta.poster || meta.background,
-                                    runtime: meta.runtime, // если доступно
-                                    year: meta.year, // если доступно
-                                    original_name: meta.original_name // если доступно
-                                };
-                                Lampa.Favorite.add('history', historyMeta, 100);
-                            }
+                            );
 
                         } else {
-                            Lampa.Noty.show('Не удалось получить ссылку на поток из данных API.');
+                            Lampa.Noty.show('Не удалось получить ссылку на поток из данных API Stremio.');
                              console.error("Hanime Plugin: Stream URL missing in streamData:", streamData);
+                              _this.activity.loader(false); // Скрываем загрузчик, если нет URL в streamData
                         }
 
                     } else {
                         Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                         console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
+                         console.warn("Hanime Plugin: No streams found or invalid stream data structure in streamData:", streamData);
+                          _this.activity.loader(false); // Скрываем загрузчик, если потоки не найдены
                     }
 
                 },
                 function(errorStatus, errorText) {
-                     _this.activity.loader(false); // Скрываем загрузчик при ошибке
+                     _this.activity.loader(false); // Скрываем загрузчик при ошибке загрузки streamData
                     console.error("Hanime Plugin: Failed to fetch stream data from API", errorStatus, errorText);
-                    Lampa.Noty.show('Ошибка загрузки данных потока: ' + errorStatus);
+                    Lampa.Noty.show('Ошибка загрузки данных потока с API: ' + errorStatus);
                 },
                 false,
                 {
@@ -277,25 +291,25 @@
 
         window.plugin_hanime_catalog_ready = true;
 
-        // *** ДОБАВЛЕНО: Загрузка скрипта invc-rch.js из Lampac ***
+        // Загрузка скрипта invc-rch.js из Lampac
         Lampa.Utils.putScript([Defined.localhost + "invc-rch.js"], function() {
             console.log("invc-rch.js loaded successfully");
-            // После загрузки rch, возможно, требуется его инициализация
+            // Инициализация rch, если требуется
             if (window.rch && typeof window.rch.typeInvoke === 'function' && !window.rch.startTypeInvoke) {
                  console.log("Initializing rch typeInvoke");
-                 window.rch.typeInvoke(Defined.localhost.replace(/\/$/, ''), function() { // Убираем слеш в конце адреса для typeInvoke
+                 window.rch.typeInvoke(Defined.localhost.replace(/\/$/, ''), function() {
                      console.log("rch typeInvoke initialized");
                  });
             } else if (window.rch) {
                  console.log("rch already initialized or typeInvoke not needed/available.");
             } else {
                  console.error("window.rch is not available after script load.");
-                 Lampa.Noty.show("Компонент Lampac (rch) не загружен. Воспроизведение может не работать.", 8000);
+                 Lampa.Noty.show("Компонент Lampac (rch) не загружен. Воспроизведение может быть недоступно.", 8000);
             }
         }, false, function(e) {
             console.error("Failed to load invc-rch.js", e);
             Lampa.Noty.show("Ошибка загрузки основного компонента Lampac. Воспроизведение недоступно.", 10000);
-        }, true); // true для асинхронной загрузки
+        }, true);
 
         var style = `
             .hanime-catalog__body.category-full {
@@ -392,7 +406,6 @@
 
         $('head').append(Lampa.Template.get('hanime-style', {}, true));
 
-        // Добавляем пункт меню только после загрузки приложения, как и раньше
         if (window.appready) {
              addMenuItem();
         } else {
