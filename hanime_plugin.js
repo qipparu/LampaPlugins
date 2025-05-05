@@ -273,16 +273,16 @@
     Lampa.Component.add('hanime_catalog', HanimeComponent);
 
     function addMenuItem() {
-      var menu_item = $(
-        `<li class="menu__item selector">
+      var menu_item = $(`
+        <li class="menu__item selector">
           <div class="menu__ico">
             <svg fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z"></path>
             </svg>
           </div>
           <div class="menu__text">Hanime Каталог</div>
-        </li>`
-      );
+        </li>
+      `);
 
       menu_item.on('hover:enter', function () {
         Lampa.Activity.push({
