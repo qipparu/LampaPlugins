@@ -1,6 +1,7 @@
 (function () {
     'use strict';
 
+    // Define the categories with their keys, titles, and URLs
     const CATEGORIES = [
         { key: 'newset', title: 'Последние добавленные', url: "/catalog/movie/newset.json" },
         { key: 'recent', title: 'Недавние', url: "/catalog/movie/recent.json" },
@@ -11,7 +12,7 @@
     const API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
     const STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
     const META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
-    const PROXY_BASE_URL = "http://77.91.78.5:3000";
+    const PROXY_BASE_URL = "http://77.91.78.5:3000"; // Keep proxy if needed
 
     function HanimeCard(data, componentRef) {
         var processedData = {
@@ -21,13 +22,28 @@
             vote_average: data.vote_average || data.vote || null,
             quality: data.quality || data.release_quality || null,
             release_year: ((data.year || data.release_date || '') + '').slice(0, 4),
-            type: data.first_air_date ? 'tv' : 'movie',
+            type: data.first_air_date ? 'tv' : 'movie', // Assuming 'tv' for series, 'movie' otherwise
             original_name: data.original_name
         };
 
-        var cardTemplate = (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function')
-            ? Lampa.Template.get('hanime-card', { img: processedData.poster_path, title: processedData.title })
-            : '<div>Error: Template not available</div>';
+        // Use the registered template, checking existence safely
+        let cardTemplate = '<div>Error: Template not available</div>';
+        if (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function') {
+            try {
+                // Attempt to get the template - it might still throw if missing
+                let fetchedTemplate = Lampa.Template.get('hanime-card', { img: processedData.poster_path, title: processedData.title });
+                if (fetchedTemplate) {
+                     cardTemplate = fetchedTemplate;
+                } else {
+                     console.error("HanimeCard: Lampa.Template.get('hanime-card') returned empty/null.");
+                }
+            } catch (e) {
+                console.error("HanimeCard: Failed to get 'hanime-card' template:", e.message);
+            }
+        } else {
+            console.error("HanimeCard: Lampa.Template or get method not available.");
+        }
+
 
         var cardElement = $(cardTemplate);
 
@@ -537,7 +553,7 @@
                      },
                       onDraw: (item, elem) => {
                            if (elem.collect && window.Lampa && Lampa.Account && typeof Lampa.Account.hasPremium === 'function' && !Lampa.Account.hasPremium()) {
-                                let lockIconTemplate = (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function' && Lampa.Template.get('icon_lock')) ? Lampa.Template.get('icon_lock') : null;
+                                let lockIconTemplate = (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function') ? (function() { try { return Lampa.Template.get('icon_lock'); } catch(e) { return null; }})() : null; // Safe get
                                 if (lockIconTemplate && window.$ && typeof item.find === 'function' && typeof item.append === 'function') {
                                      let wrap = $('<div class="selectbox-item__lock"></div>');
                                      wrap.append($(lockIconTemplate));
@@ -883,6 +899,8 @@
         function initializeLampaDependencies() {
              console.log("Hanime Plugin: initializeLampaDependencies() called (Lampa appready or fallback delay completed).");
 
+             // Critical check for required Lampa components and jQuery
+             // Check if Lampa.Template has *at least* get and add functions
              if (!window.Lampa || typeof window.Lampa !== 'object' || !Lampa.Template || typeof Lampa.Template !== 'object' || typeof Lampa.Template.get !== 'function' || typeof Lampa.Template.add !== 'function' || !Lampa.Component || typeof Lampa.Component !== 'object' || !Lampa.Activity || typeof Lampa.Activity !== 'object' || !Lampa.Controller || typeof Lampa.Controller !== 'object' || !window.$ || typeof window.$ !== 'function' || !Lampa.Scroll || typeof Lampa.Scroll !== 'function' || !Lampa.Reguest || typeof Lampa.Reguest !== 'function' || !Lampa.Arrays || typeof Lampa.Arrays !== 'object') {
                   console.error("Hanime Plugin: CRITICAL: Required Lampa components (Lampa, Template.get/add, Component, Activity, Controller, jQuery, Scroll, Reguest, Arrays) are not available after waiting for appready. Initialization failed. Please check Lampa version and installation.");
                   if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
@@ -892,6 +910,7 @@
              }
              console.log("Hanime Plugin: All critical Lampa components checked OK. Continuing initialization.");
 
+              // Set the ready flag
               if (!window.plugin_hanime_catalog_ready) {
                  window.plugin_hanime_catalog_ready = true;
                  console.log("Hanime Plugin: Global plugin_hanime_catalog_ready flag set.");
@@ -900,21 +919,41 @@
                    return;
               }
 
+             // Helper function to safely check if a template exists
+             const templateExistsSafely = (name) => {
+                 if (!Lampa.Template || typeof Lampa.Template.get !== 'function') return false; // Template system not available
+                 try {
+                     // Attempt to get the template. In some Lampa versions, get throws if not found.
+                     // In others, it returns null/undefined. This handles both.
+                     return Lampa.Template.get(name) !== undefined && Lampa.Template.get(name) !== null;
+                 } catch (e) {
+                     // If Lampa.Template.get throws, the template does not exist
+                     // console.warn(`Hanime Plugin: Lampa.Template.get('${name}') threw an error:`, e.message, "Assuming template does not exist."); // Too noisy
+                     return false;
+                 }
+             };
+
+
+             // --- Add Standard Template Fallbacks FIRST ---
              console.log("Hanime Plugin: Adding standard template fallbacks using Lampa.Template.add...");
              if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
-                 if (!Lampa.Template.get('card_vote_temp')) Lampa.Template.add('card_vote_temp', '<div class="card__vote"></div>');
-                 if (!Lampa.Template.get('card_quality_temp')) Lampa.Template.add('card_quality_temp', '<div class="card__quality"><div></div></div>');
-                 if (!Lampa.Template.get('card_year_temp')) Lampa.Template.add('card_year_temp', '<div class="card__age"></div>');
-                 if (!Lampa.Template.get('card_type_temp')) Lampa.Template.add('card_type_temp', '<div class="card__type"></div>');
-                 if (!Lampa.Template.get('icon_lock')) Lampa.Template.add('icon_lock', `<svg style="width: 1em; height: 1em;" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17C13.11 17 14 16.11 14 15C14 13.89 13.11 13 12 13C10.89 13 10 13.89 10 15C10 16.11 10.89 17 12 17M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8M9 6C9 4.34 10.34 3 12 3C13.66 3 15 4.34 15 6V8H9V6M18 20H6V10H18V20Z"></path></svg>`);
+                 // Add templates if they don't exist using the safe check
+                 if (!templateExistsSafely('card_vote_temp')) Lampa.Template.add('card_vote_temp', '<div class="card__vote"></div>');
+                 if (!templateExistsSafely('card_quality_temp')) Lampa.Template.add('card_quality_temp', '<div class="card__quality"><div></div></div>');
+                 if (!templateExistsSafely('card_year_temp')) Lampa.Template.add('card_year_temp', '<div class="card__age"></div>');
+                 if (!templateExistsSafely('card_type_temp')) Lampa.Template.add('card_type_temp', '<div class="card__type"></div>');
+                 if (!templateExistsSafely('icon_lock')) Lampa.Template.add('icon_lock', `<svg style="width: 1em; height: 1em;" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17C13.11 17 14 16.11 14 15C14 13.89 13.11 13 12 13C10.89 13 10 13.89 10 15C10 16.11 10.89 17 12 17M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8M9 6C9 4.34 10.34 3 12 3C13.66 3 15 4.34 15 6V8H9V6M18 20H6V10H18V20Z"></path></svg>`);
                   console.log("Hanime Plugin: Standard template fallbacks added successfully.");
              } else {
                   console.error("Hanime Plugin: Lampa.Template.add or get method not available. Cannot add template fallbacks.");
              }
+             // --- End Add Standard Template Fallbacks ---
+
 
              console.log("Hanime Plugin: Adding hanime-card template...");
              if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
-                 if (!Lampa.Template.get('hanime-card')) {
+                 // Add our custom template if it doesn't exist using the safe check
+                 if (!templateExistsSafely('hanime-card')) {
                      Lampa.Template.add('hanime-card', `
                          <div class="hanime-card card selector layer--visible layer--render">
                              <div class="card__view">
