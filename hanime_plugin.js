@@ -29,6 +29,12 @@
 
         // Set the title for the component
         componentLayout.querySelector('.category-full__title').innerText = componentObject.title || 'Hanime Catalog';
+        // Append the layout to the main component container immediately
+        html.appendChild(componentLayout);
+
+        // Append the scroll component's rendered element to the component's layout body immediately
+        // This ensures the scroll element exists in the DOM structure when build runs
+        componentLayout.querySelector('.category-full__body').appendChild(scroll.render(true));
 
 
         this.fetchCatalog = function () {
@@ -64,6 +70,8 @@
         this.build = function (result) {
             var _this = this;
 
+            console.log('Hanime Plugin | Building catalog with', result.length, 'items');
+
             // Clear previous items and the scroll body
             Lampa.Arrays.destroy(items); // Destroy previous card instances
             items = [];
@@ -95,8 +103,9 @@
                 card.onFocus = function (target, card_data) {
                     last = target; // Keep track of the last focused element for returning
                     active = items.indexOf(card); // Keep track of the active index
-                    scroll.update($(target), true); // Update scroll position
+                    scroll.update($(target), true); // Update scroll position. Pass true to center.
                     Lampa.Background.change(Lampa.Utils.cardImgBackground(card_data)); // Change background
+                     // console.log('Hanime Plugin | Card focused:', card_data.title);
                 };
 
                 card.onEnter = function (target, card_data) {
@@ -105,32 +114,36 @@
                     _this.fetchStreamAndMeta(card_data.id, card_data); // Fetch stream and meta
                 };
 
+                 // Optional: Handle hover for mouse/touch devices
+                 card.onHover = function(target, card_data) {
+                     // console.log('Hanime Plugin | Card hovered:', card_data.title);
+                     Lampa.Background.change(Lampa.Utils.cardImgBackground(card_data)); // Change background on hover
+                 };
+
+
                 // Append the card element to the scroll body
                 // Note: We append to the scroll's body, NOT the componentLayout's body directly
                 scroll.append(card.render(true));
                 items.push(card); // Add the card instance to the items array
             });
 
-            // Append the scroll component's rendered element to the component's layout body
-            componentLayout.querySelector('.category-full__body').appendChild(scroll.render(true));
-
-            // Append the main layout to the component's html container
-            html.appendChild(componentLayout);
-
-            // Update scroll height after content is added
-            // For horizontal scroll, minus typically adjusts height based on another element
-            // Let's keep scroll.minus() as it's standard for components within category-full
-            scroll.minus(componentLayout.querySelector('.category-full__title')); // This sets the height of the scroll container
+            // Update scroll height based on title bar height (for horizontal scroll)
+            // This sets the height of the scroll container correctly within the layout.
+            scroll.minus(componentLayout.querySelector('.category-full__title'));
 
             // Add onWheel handler to the scroll itself (for mouse wheel)
+            // *** Corrected Controller/Navigator calls ***
             scroll.onWheel = function(step){
                  // If this component's controller is not active, activate it first
                  if(!Lampa.Controller.own(_this)) {
+                     console.log('Hanime Plugin | onWheel: Toggling controller to own');
                      Lampa.Controller.toggle('content');
                  } else {
-                      // If it is owned, perform the scroll directly
-                      // This handles mouse wheel scrolling, NOT D-pad/remote moves
+                      // If it is owned, perform the scroll directly using the scroll component's method
+                      console.log('Hanime Plugin | onWheel: Performing scroll wheel', step);
                       scroll.wheel(step);
+                      // Note: D-pad moves are handled by Navigator.move, not here.
+                      // Mouse wheel should just scroll the content directly.
                  }
             };
 
@@ -138,8 +151,16 @@
              scroll.onScroll = function() {
                  // This is where you'd typically implement lazy loading based on which items are visible.
                  // For now, ensure visible elements are correctly handled (Lampa.Layer.visible does this).
+                 // console.log('Hanime Plugin | onScroll: Updating layer visibility');
                  Lampa.Layer.visible(scroll.render(true));
+                 // Optional: Implement logic to append more items if near the end (like Lampa.Main component does)
              };
+
+             // Optional: Add onEnd handler for lazy loading when scroll reaches the end horizontally
+             // scroll.onEnd = function() {
+             //      console.log('Hanime Plugin | onEnd: Reached end of scroll');
+             //      // Implement logic to load more items if available
+             // };
 
 
             // Layer update and visibility
@@ -147,6 +168,7 @@
             _this.activity.loader(false);
             _this.activity.toggle(); // Toggle the activity's controller
             // Lampa.Layer.visible(html); // No longer needed here, toggle handles visibility
+            console.log('Hanime Plugin | Build complete, activity toggled');
         };
 
         this.fetchStreamAndMeta = function (id, meta) {
@@ -155,6 +177,7 @@
             var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
 
             _this.activity.loader(true);
+            console.log('Hanime Plugin | Fetching stream and meta for ID:', id);
 
             // Always fetch stream and meta details for the selected item
             Promise.all([
@@ -167,6 +190,7 @@
 
             ]).then(([streamData, metaDataResponse]) => {
                 _this.activity.loader(false);
+                console.log('Hanime Plugin | Stream and Meta fetched successfully');
 
                 // Handle slight variations in meta response structure
                 const fullMetaData = metaDataResponse.meta || metaDataResponse;
@@ -176,7 +200,9 @@
 
                 // Process stream data
                 if (streamData && streamData.streams && streamData.streams.length > 0) {
-                    var streamToPlay = streamData.streams[0]; // Assuming the first stream is the one to play
+                    // Sort streams by quality if possible, or pick a suitable one
+                    // For simplicity, taking the first stream as before
+                    var streamToPlay = streamData.streams[0];
 
                     // --- Keep and refine the proxy logic ---
                     var finalStreamUrl = streamToPlay.url;
@@ -223,7 +249,7 @@
                         // based on the Stremio Addon SDK manifest/stream data structure.
                         // Example: Add subtitles if available in streamData.streams
                          subtitles: streamData.streams
-                             .filter(s => s.url && s.title && (s.url.endsWith('.srt') || s.url.endsWith('.vtt'))) // Filter for known subtitle formats
+                             .filter(s => s.url && s.title && (s.url.endsWith('.srt') || s.url.endsWith('.vtt') || s.url.includes('subtitle'))) // Filter for known subtitle formats and check 'subtitle' in URL
                              .map((s, index) => ({
                                  index: index, // Assign a unique index
                                  label: s.title, // Use stream title as subtitle label
@@ -280,10 +306,7 @@
 
             this.activity.loader(false);
             this.activity.toggle(); // Toggle controller to allow navigation on empty state
-            // empty.start sets up a basic controller for the empty screen.
-            // We can optionally call this or rely on our main 'content' controller setup if we handle empty state navigation there.
-            // Let's rely on our 'content' controller setup which should handle empty collectionSet.
-            // this.start = empty.start; // This line might override our main start logic if not careful
+            console.log('Hanime Plugin | Empty state shown, activity toggled');
         };
 
         this.create = function () {
@@ -306,23 +329,36 @@
                      console.log('Hanime Plugin | controller toggle called');
                     // This is called when the controller is activated/toggled.
                     // We need to tell the Navigator which elements are selectable.
-                    // If scroll exists and has rendered content, set its collection
+                    // Explicitly find selectable elements within the scroll or main layout
+                    let selectableElements = [];
                     if (scroll && scroll.render(true)) {
-                        Lampa.Controller.collectionSet(scroll.render(true)); // Pass the DOM element
-                        // Focus on the last focused element, or the first if none was focused.
-                        Lampa.Controller.collectionFocus(last || false, scroll.render(true)); // Pass the DOM element
-                        // Make the scrollable area visible
-                        Lampa.Layer.visible(scroll.render(true)); // Ensure visible elements are rendered
+                         selectableElements = scroll.render(true).querySelectorAll('.selector');
+                         console.log('Hanime Plugin | Found', selectableElements.length, 'selectable elements in scroll');
                     } else {
-                         // If no scroll or content, clear collection (useful for empty state)
-                         Lampa.Controller.collectionSet(componentLayout); // Set collection to the main layout
-                         Lampa.Controller.collectionFocus(false, componentLayout); // Attempt to focus first focusable in layout (e.g., buttons in empty state)
-                         Lampa.Layer.visible(componentLayout); // Ensure main layout is visible
+                         // If no scroll (e.g., empty state), find selectors in the main layout
+                         selectableElements = componentLayout.querySelectorAll('.selector');
+                         console.log('Hanime Plugin | Found', selectableElements.length, 'selectable elements in layout');
                     }
+
+
+                    if (selectableElements.length > 0) {
+                         // Convert NodeList to Array if necessary, though collectionSet usually handles NodeList
+                         Lampa.Controller.collectionSet(selectableElements);
+                         // Focus on the last focused element, or the first if available
+                         Lampa.Controller.collectionFocus(last || false, selectableElements[0]); // Pass the first element for focus if last is false
+                    } else {
+                         // If no selectable elements, clear the collection
+                         Lampa.Controller.clear();
+                         console.log('Hanime Plugin | No selectable elements found, clearing collection');
+                    }
+
+                    // Ensure the component's main element is visible layers-wise
+                    Lampa.Layer.visible(html);
                 },
                 update: () => { // Use arrow function here
                      console.log('Hanime Plugin | controller update called');
                      // Trigger layer visibility update when the controller is updated
+                     // This is crucial for image loading in Lampa.Card components
                      if (scroll && scroll.render(true)) {
                          Lampa.Layer.visible(scroll.render(true));
                      } else {
@@ -418,27 +454,51 @@
         // --- Add CSS for the component layout and cards ---
         // This replaces the old styles and ensures the standard card looks right within the new layout.
         var style = `
+            /* Styles for the main component container */
+            .hanime-catalog-component {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column; /* Arrange title above content */
+                overflow: hidden; /* Hide overflow */
+            }
+
+            /* Styles for the category-full layout elements used within the component */
+            .hanime-catalog-component .category-full__title {
+                 /* Standard title styles from category-full */
+                 padding: 1.5em 2em 1em 2em; /* Add padding around the title */
+                 font-size: 1.8em; /* Adjust font size if needed */
+                 font-weight: 600;
+                 color: var(--text);
+                 flex-shrink: 0; /* Prevent title from shrinking */
+            }
+
             .hanime-catalog-component .category-full__body {
-                display: flex; /* Enable flexbox for horizontal layout */
-                flex-wrap: nowrap; /* Prevent wrapping to keep it a single row */
-                /* Add padding or margin if needed */
-                padding: 0 2em; /* Example padding */
-                box-sizing: border-box; /* Include padding in element's total width */
+                /* This is where the scroll component will be placed */
+                flex-grow: 1; /* Allow the body to take remaining space */
+                overflow: hidden; /* Handled by the scroll component inside */
+                position: relative; /* Needed for absolute positioning inside if any */
             }
 
+            /* Styles for the Lampa.Scroll component used within the body */
             .hanime-catalog-component .scroll {
-                 height: auto; /* Allow scroll height to be determined by content or minus() */
-                 flex-grow: 1; /* Allow scroll to take available space */
-                 overflow: hidden; /* Hide scrollbar, Lampa.Scroll handles navigation */
+                 width: 100%;
+                 height: 100%; /* Scroll takes the full height of the body */
+                 /* Lampa.Scroll already handles its own display/overflow based on its type */
             }
 
+            /* Styles for the scroll's internal body (where cards are appended) */
             .hanime-catalog-component .scroll__body.items-cards {
+                 /* Lampa's standard class for horizontal card lists */
                  display: flex; /* Make the scroll body a flex container */
-                 flex-wrap: nowrap; /* Keep items in a single row */
+                 flex-direction: row; /* Arrange items horizontally */
+                 flex-wrap: nowrap; /* Prevent wrapping */
                  align-items: flex-start; /* Align items to the top */
+                 padding: 0 2em; /* Add horizontal padding */
+                 box-sizing: border-box; /* Include padding in element's total width */
             }
 
-            /* Style adjustments for Lampa.Card within this component */
+            /* Style adjustments for Lampa.Card within this horizontal list */
             .hanime-catalog-component .card.card--category {
                 /* Inherits basic card styles, adjust spacing */
                 margin: 0 0.5em; /* Add horizontal margin between cards */
@@ -461,16 +521,19 @@
                 height: 270px; /* Standard card height */
             }
 
-             .hanime-catalog-component .card.selector:focus {
+             /* Focus styles for selectable elements (cards in this case) */
+             .hanime-catalog-component .selector:focus {
+                 /* Apply Lampa's default focus style or customize */
                  transform: scale(1.05);
-                 box-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
+                 box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Example custom shadow */
                  z-index: 5;
-                 border: 3px solid rgba(255, 255, 255, 0.5);
+                 outline: 3px solid rgba(255, 255, 255, 0.5); /* Example custom outline */
              }
-             .hanime-catalog-component .card.selector.focus:not(.native) {
-                 border-color: transparent;
+             /* Remove default focus outline on non-native focus */
+             .hanime-catalog-component .selector.focus:not(.native) {
                  outline: none;
              }
+
 
              .hanime-catalog-component .card__title {
                  /* Adjust title styling if needed */
@@ -488,6 +551,15 @@
                   width: 1.5em;
                   height: 1.5em;
             }
+
+             /* Style for the empty state */
+             .hanime-catalog-component .empty {
+                 /* Center empty state content within the body */
+                 display: flex;
+                 justify-content: center;
+                 align-items: center;
+                 height: 100%; /* Take full height of the body */
+             }
         `;
         // Append the style element to the head
         $('head').append($('<style>').html(style));
