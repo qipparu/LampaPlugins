@@ -1,54 +1,68 @@
 (function () {
     'use strict';
 
+    // Используем стандартный шаблон карточки Lampa, если он подходит, или ваш кастомный
+    // Ваш кастомный шаблон уже использует стандартные классы, что хорошо.
+    // Lampa.Template.get('card', ...) - стандартный шаблон
+    // Lampa.Template.add('hanime-card', ...) - ваш шаблон
+
+    function HanimeCard(data) {
+        // Используем ваш кастомный шаблон, так как он уже определен и стилизован
+        var cardTemplate = Lampa.Template.get('hanime-card', {
+            id: data.id,
+            img: data.poster,
+            title: data.name,
+        });
+
+        var cardElement = $(cardTemplate);
+
+        // Класс selector уже должен быть в вашем шаблоне hanime-card
+        // cardElement.addClass('selector'); // Убедитесь, что он есть в шаблоне
+
+        this.render = function () {
+            return cardElement;
+        };
+
+        this.destroy = function () {
+            cardElement.remove();
+        };
+    }
+
     function HanimeComponent(componentObject) {
         var network = new Lampa.Reguest();
-        // Use Lampa.Scroll for scrolling the content area
-        // *** Add horizontal: true option ***
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, horizontal: true });
-        var items = []; // Array to hold Lampa.Card instances
-        var html = document.createElement('div'); // Main container for the component
-        var active = 0; // Index of the currently focused item
-        var last; // Last focused item element
+        // Инициализация скролла
+        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
+        var items = [];
+        // Основной контейнер компонента
+        var html = $('<div class="hanime-catalog"></div>');
+        // Контейнер для карточек внутри скролла, используем стандартный класс category-full
+        var body = $('<div class="hanime-catalog__body category-full"></div>');
+        var active = 0; // Индекс активного элемента
+        var last; // Последний сфокусированный элемент DOM
 
-        // API URLs
         var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
         var CATALOG_URL = API_BASE_URL + "/catalog/movie/newset.json";
         var STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
         var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
 
-        // --- Keep the proxy server address ---
+        // --- Добавлено: Адрес вашего прокси сервера ---
         var PROXY_BASE_URL = "http://77.91.78.5:3000";
         // ---------------------------------------------
-
-        // --- Use Lampa's built-in category-full template for structure ---
-        // This template provides a standard layout including a title area and a body for items.
-        // We will append the scroll component's rendered element to the body of this template.
-        var componentLayout = Lampa.Template.js('category-full');
-        componentLayout.classList.add('hanime-catalog-component'); // Add a custom class if needed for specific styling
-
-        // Set the title for the component
-        componentLayout.querySelector('.category-full__title').innerText = componentObject.title || 'Hanime Catalog';
-        // Append the layout to the main component container immediately
-        html.appendChild(componentLayout);
-
-        // Append the scroll component's rendered element to the component's layout body immediately
-        // This ensures the scroll element exists in the DOM structure when build runs
-        componentLayout.querySelector('.category-full__body').appendChild(scroll.render(true));
 
 
         this.fetchCatalog = function () {
             var _this = this;
-            _this.activity.loader(true);
+            _this.activity.loader(true); // Показываем индикатор загрузки
 
-            network.clear();
+            network.clear(); // Очищаем предыдущие запросы
             network.native(CATALOG_URL,
                 function (data) {
+                    // Проверка формата данных
                     if (data && data.metas && Array.isArray(data.metas)) {
                          if (data.metas.length > 0) {
-                            _this.build(data.metas);
+                            _this.build(data.metas); // Строим каталог
                          } else {
-                            _this.empty("Каталог пуст.");
+                            _this.empty("Каталог пуст."); // Показываем сообщение о пустом каталоге
                          }
                     } else {
                         _this.empty("Неверный формат данных от API.");
@@ -59,116 +73,78 @@
                     _this.empty("Не удалось загрузить каталог. Статус: " + errorStatus);
                     console.error("Hanime Plugin: Failed to load catalog", errorStatus, errorText);
                 },
-                false,
+                false, // Не кэшировать
                 {
                     dataType: 'json',
-                    timeout: 15000
+                    timeout: 15000 // Таймаут запроса
                 }
             );
         };
 
         this.build = function (result) {
             var _this = this;
+            scroll.minus(); // Возможно, нужно для учета верхних элементов, если они есть
 
-            console.log('Hanime Plugin | Building catalog with', result.length, 'items');
-
-            // Clear previous items and the scroll body
-            Lampa.Arrays.destroy(items); // Destroy previous card instances
+            // Очищаем предыдущие элементы перед добавлением новых
+            body.empty();
             items = [];
-            scroll.clear(); // Clear the DOM elements from the scroll body
 
-            // Add items to the scroll body using Lampa.Card
             result.forEach(function (meta) {
-                // Map Stremio meta properties to Lampa.Card expected properties
-                var cardData = {
-                    id: meta.id,
-                    title: meta.name || meta.title, // Use name or title
-                    poster_path: meta.poster, // Use poster as poster_path
-                    background_path: meta.background, // Use background for wide/collection cards
-                    year: meta.year,
-                    overview: meta.description, // Use description as overview
-                    // Add other properties if available and relevant for Lampa.Card display
-                };
+                var card = new HanimeCard(meta);
+                var cardElement = card.render();
 
-                // Create Lampa.Card instance
-                var card = new Lampa.Card(cardData, {
-                    object: componentObject, // Pass component object if needed by card events
-                    card_category: true, // Display as a category card
-                    // Add other card parameters if needed (e.g., card_wide, card_small)
+                cardElement.on('hover:focus', function () {
+                    last = cardElement[0]; // Сохраняем DOM элемент для фокуса
+                    active = items.indexOf(card); // Сохраняем индекс
+                    // Обновляем скролл, чтобы сфокусированный элемент был виден
+                    scroll.update(cardElement, true);
+                }).on('hover:enter', function () {
+                    console.log("Selected Anime:", meta.id, meta.name);
+                    _this.fetchStreamAndMeta(meta.id, meta); // Запускаем загрузку потока и метаданных
                 });
 
-                card.create();
-
-                // Attach Lampa's standard card events
-                card.onFocus = function (target, card_data) {
-                    last = target; // Keep track of the last focused element for returning
-                    active = items.indexOf(card); // Keep track of the active index
-                    scroll.update($(target), true); // Update scroll position. Pass true to center.
-                    Lampa.Background.change(Lampa.Utils.cardImgBackground(card_data)); // Change background
-                     // console.log('Hanime Plugin | Card focused:', card_data.title);
-                };
-
-                card.onEnter = function (target, card_data) {
-                    last = target; // Keep track of the last focused element
-                    console.log("Hanime Plugin | Selected Anime:", card_data.id, card_data.title);
-                    _this.fetchStreamAndMeta(card_data.id, card_data); // Fetch stream and meta
-                };
-
-                 // Optional: Handle hover for mouse/touch devices
-                 card.onHover = function(target, card_data) {
-                     // console.log('Hanime Plugin | Card hovered:', card_data.title);
-                     Lampa.Background.change(Lampa.Utils.cardImgBackground(card_data)); // Change background on hover
-                 };
-
-
-                // Append the card element to the scroll body
-                // Note: We append to the scroll's body, NOT the componentLayout's body directly
-                scroll.append(card.render(true));
-                items.push(card); // Add the card instance to the items array
+                body.append(cardElement); // Добавляем карточку в контейнер body
+                items.push(card); // Добавляем объект карточки в массив
             });
 
-            // Update scroll height based on title bar height (for horizontal scroll)
-            // This sets the height of the scroll container correctly within the layout.
-            scroll.minus(componentLayout.querySelector('.category-full__title'));
+            // Добавляем body в скролл, если еще не добавлен, или обновляем его содержимое
+            // scroll.append(body); // Этот вызов нужен только один раз при создании
+            // Вместо append, убедимся, что body является содержимым скролла.
+            // Lampa.Scroll обычно работает с одним корневым элементом внутри себя.
+            // Ваша текущая структура html -> scroll.render() -> body -> cards
+            // предполагает, что body уже внутри scroll.render().
+            // Давайте убедимся, что body правильно привязан к скроллу.
+            // В стандартных компонентах Lampa, body часто является элементом,
+            // который передается в scroll.append() или устанавливается как содержимое скролла.
+            // Ваш код добавляет body в scroll.render(), а затем scroll.render() в html.
+            // Это может быть источником проблемы.
+            // Правильнее: html -> scroll.render() (это контейнер скролла) -> body (это содержимое скролла) -> cards.
+            // scroll.append(body) добавляет body как содержимое скролла.
 
-            // Add onWheel handler to the scroll itself (for mouse wheel)
-            // *** Corrected Controller/Navigator calls ***
-            scroll.onWheel = function(step){
-                 // If this component's controller is not active, activate it first
-                 if(!Lampa.Controller.own(_this)) {
-                     console.log('Hanime Plugin | onWheel: Toggling controller to own');
-                     Lampa.Controller.toggle('content');
-                 } else {
-                      // If it is owned, perform the scroll directly using the scroll component's method
-                      console.log('Hanime Plugin | onWheel: Performing scroll wheel', step);
-                      scroll.wheel(step);
-                      // Note: D-pad moves are handled by Navigator.move, not here.
-                      // Mouse wheel should just scroll the content directly.
+            // Перестроим логику добавления body в скролл
+            scroll.append(body); // Добавляем body как скроллируемое содержимое
+
+            // Добавляем контейнер скролла в основной html компонента
+            html.empty().append(scroll.render(true)); // Очищаем html и добавляем скролл. true для пересчета.
+
+            _this.activity.loader(false); // Скрываем индикатор загрузки
+            _this.activity.toggle(); // Показываем активность
+
+            // --- Потенциальное исправление скролла: Явное обновление после показа ---
+            // Даем Lampa время отрисовать элементы и контейнеры
+            setTimeout(function() {
+                 scroll.update(); // Обновляем скролл без привязки к элементу, чтобы пересчитать размеры
+                 if (last) {
+                     // Если есть последний сфокусированный элемент (например, при возврате)
+                     scroll.update($(last), true); // Прокручиваем к нему
+                 } else if (items.length > 0) {
+                     // Если элементов много, фокусируемся на первом и прокручиваем к нему
+                     var firstCardElement = items[0].render();
+                     Lampa.Controller.collectionFocus(firstCardElement[0], scroll.render());
+                     scroll.update(firstCardElement, true);
                  }
-            };
-
-             // Add onScroll handler to handle events when the user scrolls (mouse wheel or Navigator movement)
-             scroll.onScroll = function() {
-                 // This is where you'd typically implement lazy loading based on which items are visible.
-                 // For now, ensure visible elements are correctly handled (Lampa.Layer.visible does this).
-                 // console.log('Hanime Plugin | onScroll: Updating layer visibility');
-                 Lampa.Layer.visible(scroll.render(true));
-                 // Optional: Implement logic to append more items if near the end (like Lampa.Main component does)
-             };
-
-             // Optional: Add onEnd handler for lazy loading when scroll reaches the end horizontally
-             // scroll.onEnd = function() {
-             //      console.log('Hanime Plugin | onEnd: Reached end of scroll');
-             //      // Implement logic to load more items if available
-             // };
-
-
-            // Layer update and visibility
-            Lampa.Layer.update(); // Update layers including the new scroll component
-            _this.activity.loader(false);
-            _this.activity.toggle(); // Toggle the activity's controller
-            // Lampa.Layer.visible(html); // No longer needed here, toggle handles visibility
-            console.log('Hanime Plugin | Build complete, activity toggled');
+            }, 50); // Небольшая задержка
+            // --------------------------------------------------------------------
         };
 
         this.fetchStreamAndMeta = function (id, meta) {
@@ -177,403 +153,292 @@
             var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
 
             _this.activity.loader(true);
-            console.log('Hanime Plugin | Fetching stream and meta for ID:', id);
 
-            // Always fetch stream and meta details for the selected item
+            // Используем Promise.all для параллельной загрузки потока и метаданных
             Promise.all([
                 new Promise((resolve, reject) => {
                     network.native(streamUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
                 }),
-                 new Promise((resolve, reject) => {
-                      network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
+                // Если метаданные уже есть (из каталога), используем их, иначе загружаем
+                meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
+                     network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
                  })
 
             ]).then(([streamData, metaDataResponse]) => {
                 _this.activity.loader(false);
-                console.log('Hanime Plugin | Stream and Meta fetched successfully');
 
-                // Handle slight variations in meta response structure
+                // Извлекаем полные метаданные
                 const fullMetaData = metaDataResponse.meta || metaDataResponse;
 
-                console.log("Hanime Plugin | Stream Data:", streamData);
-                console.log("Hanime Plugin | Full Meta Data:", fullMetaData);
+                console.log("Stream Data:", streamData);
+                console.log("Full Meta Data:", fullMetaData);
 
-                // Process stream data
+                // Проверяем наличие потоков
                 if (streamData && streamData.streams && streamData.streams.length > 0) {
-                    // Sort streams by quality if possible, or pick a suitable one
-                    // For simplicity, taking the first stream as before
-                    var streamToPlay = streamData.streams[0];
+                    var streamToPlay = streamData.streams[0]; // Берем первый поток
 
-                    // --- Keep and refine the proxy logic ---
+                    // --- Изменено: Использование прокси для URL потока ---
                     var finalStreamUrl = streamToPlay.url;
+
+                    // Проверяем, является ли URL потока тем, который вызывает проблему CORS (на highwinds-cdn.com)
+                    // Если да, оборачиваем его прокси
                     try {
-                         var urlObj = new URL(finalStreamUrl);
-                         // Check if the hostname indicates a known CORS-problematic source
-                         // This is a heuristic; adjust or add more hostnames as needed
-                         // Added mycloudplayer.com based on common Stremio addon issues
-                         if (urlObj.hostname.includes('highwinds-cdn.com') || urlObj.hostname.includes('mycloudplayer.com')) {
-                             // Encode the original URL and pass it as a parameter to the proxy
+                         var url = new URL(finalStreamUrl);
+                         if (url.hostname.includes('highwinds-cdn.com')) {
+                             // Оборачиваем оригинальный URL потока адресом прокси
                              finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
-                             console.log("Hanime Plugin | Original stream URL proxied:", finalStreamUrl);
-                         } else {
-                             console.log("Hanime Plugin | Using direct stream URL:", finalStreamUrl);
+                             console.log("Original stream URL proxied:", finalStreamUrl);
                          }
                     } catch (e) {
-                        console.error("Hanime Plugin | Failed to parse or proxy stream URL", e);
-                        // Fallback to using the original URL if parsing/proxying fails
-                        finalStreamUrl = streamToPlay.url;
-                        console.log("Hanime Plugin | Error during proxying, using original URL:", finalStreamUrl);
+                        console.error("Hanime Plugin: Failed to parse or proxy stream URL", e);
+                        // Продолжаем использовать оригинальный URL, если не удалось обработать
                     }
                     // -------------------------------------------------------
 
-                    // Prepare player object using combined stream and meta data
+                    // Подготавливаем объект для плеера Lampa
                     var playerObject = {
                         title: fullMetaData.name || fullMetaData.title || 'Без названия',
-                        url: finalStreamUrl, // Use the URL after applying proxy logic
-                        // Use background for poster in player if poster is not suitable or missing
+                        url: finalStreamUrl, // Используем URL после возможного проксирования
                         poster: fullMetaData.poster || fullMetaData.background,
-                        card: { // Provide card data for history and other Lampa features
-                            id: fullMetaData.id,
-                            title: fullMetaData.name || fullMetaData.title,
-                            poster_path: fullMetaData.poster || fullMetaData.background, // Use poster or background
-                            runtime: fullMetaData.runtime, // if available
-                            year: fullMetaData.year, // if available
-                            original_name: fullMetaData.original_name, // if available
-                            // Add other relevant meta data for the card if available
-                            // E.g., genres, description, rating etc. based on Stremio meta structure
-                            genres: fullMetaData.genres,
-                            overview: fullMetaData.description,
-                            vote_average: fullMetaData.rating,
-                        },
-                        // Add other player parameters if needed, like subtitles, quality options etc.
-                        // based on the Stremio Addon SDK manifest/stream data structure.
-                        // Example: Add subtitles if available in streamData.streams
-                         subtitles: streamData.streams
-                             .filter(s => s.url && s.title && (s.url.endsWith('.srt') || s.url.endsWith('.vtt') || s.url.includes('subtitle'))) // Filter for known subtitle formats and check 'subtitle' in URL
-                             .map((s, index) => ({
-                                 index: index, // Assign a unique index
-                                 label: s.title, // Use stream title as subtitle label
-                                 url: s.url // The URL to the subtitle file
-                             })),
+                        // Дополнительные поля, если нужны плееру Lampa
+                        // subtitles: streamToPlay.subtitles // Если API предоставляет субтитры
                     };
 
+                    // Запускаем плеер
                     if (playerObject.url) {
-                         console.log("Hanime Plugin | Launching player with:", playerObject);
+                         console.log("Launching player with:", playerObject);
                          Lampa.Player.play(playerObject);
+                         Lampa.Player.playlist([playerObject]); // Добавляем в плейлист (можно и один элемент)
 
-                         // Add to history using the card data format Lampa expects
-                         // Use the card data prepared for the playerObject
-                         if (playerObject.card && playerObject.card.id) {
-                              // The add('history', ...) function expects properties like title, poster_path, year, etc.
-                              // We provide the card object which contains these properties.
-                              Lampa.Favorite.add('history', playerObject.card, 100); // Assume watched 100% on launch for simplicity
-                         } else {
-                             console.warn("Hanime Plugin | Cannot add to history: card data incomplete", playerObject.card);
+                         // Добавляем в историю просмотра
+                         if (fullMetaData) {
+                                const historyMeta = {
+                                    id: fullMetaData.id,
+                                    title: fullMetaData.name || fullMetaData.title,
+                                    poster: fullMetaData.poster || fullMetaData.background,
+                                    runtime: fullMetaData.runtime, // Если есть в метаданных
+                                    year: fullMetaData.year, // Если есть
+                                    original_name: fullMetaData.original_name // Если есть
+                                };
+                                Lampa.Favorite.add('history', historyMeta, 100); // Добавляем в историю (тип 'history', данные, лимит)
                          }
 
                     } else {
                          Lampa.Noty.show('Не удалось получить ссылку на поток.');
-                         console.error("Hanime Plugin | No valid stream URL found in stream data:", streamData);
+                         console.error("Hanime Plugin: No valid stream URL found in stream data:", streamData);
                     }
 
                 } else {
                      Lampa.Noty.show('Потоки не найдены для этого аниме.');
-                     console.warn("Hanime Plugin | No streams found or invalid stream data structure:", streamData);
+                     console.warn("Hanime Plugin: No streams found or invalid stream data structure:", streamData);
                 }
 
             }).catch(error => {
                 _this.activity.loader(false);
-                console.error("Hanime Plugin | Failed to fetch stream/meta details", error);
-                // Display a more user-friendly error message
-                Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка. Проверьте интернет-соединение или попробуйте позже.'));
+                console.error("Hanime Plugin: Failed to fetch stream/meta details", error);
+                Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'));
             });
         };
 
-
-        // --- Use Lampa's Empty component correctly ---
+        // Метод для отображения сообщения об ошибке или пустом каталоге
         this.empty = function (msg) {
-            console.log('Hanime Plugin | Displaying empty state:', msg);
-            // Clear any previous content (like the scroll area)
-            componentLayout.querySelector('.category-full__body').innerHTML = '';
-            if (scroll) { // Check if scroll instance exists before destroying
-                 scroll.destroy();
-                 scroll = null; // Nullify the reference
-            }
-
-            // Use 'text' property for the message in Lampa.Empty
-            var empty = new Lampa.Empty({ text: msg });
-            componentLayout.querySelector('.category-full__body').appendChild(empty.render(true)); // Append to the correct container
-
+            var empty = new Lampa.Empty({ message: msg });
+            html.empty().append(empty.render(true)); // Очищаем html и добавляем компонент Empty
             this.activity.loader(false);
-            this.activity.toggle(); // Toggle controller to allow navigation on empty state
-            console.log('Hanime Plugin | Empty state shown, activity toggled');
+            this.activity.toggle();
+            this.start = empty.start; // Переназначаем start на метод start компонента Empty
         };
 
+        // Метод создания компонента (вызывается Lampa при активации)
         this.create = function () {
-            // componentObject.activity is automatically set by Lampa
-            console.log('Hanime Plugin | create method called');
-            this.activity.loader(true); // Show loader when component is created
-            this.fetchCatalog(); // Start fetching data
+            this.activity.loader(true);
+            this.fetchCatalog(); // Запускаем загрузку каталога
         };
 
-        // --- Corrected start/pause/stop methods for Lampa Component ---
-        // These methods are called by Lampa.Activity lifecycle
-        // Using arrow functions to preserve 'this' context
-        this.start = () => {
-            console.log('Hanime Plugin | start method called, setting up controller');
-            // The activity component is now active. Set up its controller.
-            // Controller 'content' is standard for lists/grids of items.
+        // Метод запуска компонента (вызывается Lampa при фокусе на активности)
+        this.start = function () {
+            // Проверяем, активна ли текущая активность
+            if (Lampa.Activity.active().activity !== this.activity) return;
+
+            // Устанавливаем контроллер для навигации по элементам
             Lampa.Controller.add('content', {
-                link: this, // Link controller to this component instance
-                toggle: () => {
-                     console.log('Hanime Plugin | controller toggle called');
-                    // This is called when the controller is activated/toggled.
-                    // We need to tell the Navigator which elements are selectable.
-                    // Explicitly find selectable elements within the scroll or main layout
-                    let selectableElements = [];
-                    if (scroll && scroll.render(true)) {
-                         selectableElements = scroll.render(true).querySelectorAll('.selector');
-                         console.log('Hanime Plugin | Found', selectableElements.length, 'selectable elements in scroll');
-                    } else {
-                         // If no scroll (e.g., empty state), find selectors in the main layout
-                         selectableElements = componentLayout.querySelectorAll('.selector');
-                         console.log('Hanime Plugin | Found', selectableElements.length, 'selectable elements in layout');
-                    }
-
-
-                    if (selectableElements.length > 0) {
-                         // Convert NodeList to Array if necessary, though collectionSet usually handles NodeList
-                         Lampa.Controller.collectionSet(selectableElements);
-                         // Focus on the last focused element, or the first if available
-                         Lampa.Controller.collectionFocus(last || false, selectableElements[0]); // Pass the first element for focus if last is false
-                    } else {
-                         // If no selectable elements, clear the collection
-                         Lampa.Controller.clear();
-                         console.log('Hanime Plugin | No selectable elements found, clearing collection');
-                    }
-
-                    // Ensure the component's main element is visible layers-wise
-                    Lampa.Layer.visible(html);
+                toggle: function () {
+                    // Устанавливаем коллекцию элементов для контроллера (все .selector внутри scroll.render())
+                    Lampa.Controller.collectionSet(scroll.render());
+                    // Устанавливаем фокус на последний активный элемент или на первый
+                    Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
-                update: () => { // Use arrow function here
-                     console.log('Hanime Plugin | controller update called');
-                     // Trigger layer visibility update when the controller is updated
-                     // This is crucial for image loading in Lampa.Card components
-                     if (scroll && scroll.render(true)) {
-                         Lampa.Layer.visible(scroll.render(true));
-                     } else {
-                          Lampa.Layer.visible(componentLayout);
-                     }
+                left: function () {
+                    // Перемещение влево
+                    if (Navigator.canmove('left')) Navigator.move('left');
+                    else Lampa.Controller.toggle('menu'); // Если нельзя двигаться влево, переключаемся на меню
                 },
-                left: () => { // Use arrow function here
-                     console.log('Hanime Plugin | controller left called');
-                    // Navigator.move handles focus movement within the current collectionSet
-                    if (Lampa.Navigator.canmove('left')) Lampa.Navigator.move('left');
-                    else Lampa.Controller.toggle('menu'); // Allow moving to the main menu
+                right: function () {
+                    // Перемещение вправо
+                    if (Navigator.canmove('right')) Navigator.move('right');
                 },
-                right: () => { // Use arrow function here
-                     console.log('Hanime Plugin | controller right called');
-                    if (Lampa.Navigator.canmove('right')) Lampa.Navigator.move('right');
+                up: function () {
+                    // Перемещение вверх
+                    if (Navigator.canmove('up')) Navigator.move('up');
+                    else Lampa.Controller.toggle('head'); // Если нельзя двигаться вверх, переключаемся на шапку
                 },
-                up: () => { // Use arrow function here
-                     console.log('Hanime Plugin | controller up called');
-                     // If Navigator cannot move up (at the top row), move focus to the head
-                    if (Lampa.Navigator.canmove('up')) Lampa.Navigator.move('up');
-                    else Lampa.Controller.toggle('head');
+                down: function () {
+                    // Перемещение вниз
+                    if (Navigator.canmove('down')) Navigator.move('down');
                 },
-                down: () => { // Use arrow function here
-                     console.log('Hanime Plugin | controller down called');
-                    if (Lampa.Navigator.canmove('down')) Lampa.Navigator.move('down');
-                },
-                back: this.back // Handle the back key press
+                back: this.back // Обработка кнопки "Назад"
             });
+            Lampa.Controller.toggle('content'); // Активируем контроллер 'content'
 
-            // Toggle the content controller to activate it
-            Lampa.Controller.toggle('content');
-             console.log('Hanime Plugin | Controller content toggled');
+            // --- Потенциальное исправление скролла: Явное обновление после установки контроллера ---
+            // Это может быть альтернативой или дополнением к обновлению в build
+             setTimeout(function() {
+                 scroll.update(); // Обновляем скролл без привязки к элементу
+                 if (last) {
+                     scroll.update($(last), true); // Прокручиваем к последнему фокусу
+                 } else if (items.length > 0) {
+                      // Если нет последнего фокуса, но есть элементы, фокусируемся на первом
+                      var firstCardElement = items[0].render();
+                      Lampa.Controller.collectionFocus(firstCardElement[0], scroll.render());
+                      scroll.update(firstCardElement, true);
+                 }
+             }, 50); // Небольшая задержка
+            // ------------------------------------------------------------------------------------
         };
 
-        this.pause = () => {
-             console.log('Hanime Plugin | pause method called');
-             // Called when this activity is paused (e.g., another activity pushed on top)
-             // The controller for this component is automatically deactivated by Lampa.Activity.
-             // You might save the current state (scroll position, focused item) here if needed,
-             // but Lampa often handles focused element persistence via `last`.
+        this.pause = function () {
+            // Метод паузы активности (вызывается Lampa)
         };
 
-        this.stop = () => {
-             console.log('Hanime Plugin | stop method called');
-             // Called when this activity is stopped (e.g., navigated back from)
-             // This method is called *before* destroy in some cases.
-             // Clean up temporary states here if necessary.
+        this.stop = function () {
+            // Метод остановки активности (вызывается Lampa)
         };
 
-        // --- Corrected render method ---
-        // Returns the main HTML element for the component instance
+        // Метод рендеринга компонента (возвращает корневой DOM элемент)
         this.render = function () {
-            return html; // This is the root DOM element for the component
+            return html;
         };
 
+        // Метод уничтожения компонента (вызывается Lampa при закрытии активности)
         this.destroy = function () {
-            console.log('Hanime Plugin | destroy method called');
-            // Called when this activity is removed from the stack (e.g., after navigating back).
-            // Clean up resources to prevent memory leaks.
-            network.clear(); // Abort any ongoing network requests
-            Lampa.Arrays.destroy(items); // Destroy all Lampa.Card instances
-            if (scroll) { // Check if scroll instance exists before destroying
-                 scroll.destroy();
-                 scroll = null; // Nullify the reference
-            }
-            if (html && html.parentNode) { // Check if html element is in the DOM before removing
-                 html.parentNode.removeChild(html);
-            }
-
-            // Nullify remaining references
+            console.log("Hanime Plugin: Destroying component");
+            network.clear(); // Очищаем запросы
+            Lampa.Arrays.destroy(items); // Уничтожаем объекты карточек
+            scroll.destroy(); // Уничтожаем скролл
+            html.remove(); // Удаляем DOM элемент компонента
+            // Обнуляем ссылки для сборщика мусора
             items = null;
             network = null;
+            scroll = null;
             html = null;
-            componentLayout = null; // Nullify the layout reference
+            body = null;
             last = null;
-            console.log('Hanime Plugin | destroy complete');
         };
 
-        this.back = () => {
-            console.log('Hanime Plugin | back method called');
-            // Standard back navigation using Lampa.Activity
-            Lampa.Activity.backward();
+        // Метод для обработки кнопки "Назад"
+        this.back = function () {
+            Lampa.Activity.backward(); // Возвращаемся к предыдущей активности
         };
     }
 
-    // --- Main plugin initialization ---
+    // Функция запуска плагина
     function startPlugin() {
+        // Проверяем, был ли плагин уже запущен
         if (window.plugin_hanime_catalog_ready) return;
+
         window.plugin_hanime_catalog_ready = true;
 
-        console.log('Hanime Plugin', 'Start loading');
-
-        // --- Add CSS for the component layout and cards ---
-        // This replaces the old styles and ensures the standard card looks right within the new layout.
+        // Добавляем CSS стили
         var style = `
-            /* Styles for the main component container */
-            .hanime-catalog-component {
-                width: 100%;
-                height: 100%;
-                display: flex;
-                flex-direction: column; /* Arrange title above content */
-                overflow: hidden; /* Hide overflow */
+            .hanime-catalog__body.category-full {
+                justify-content: space-around; /* Стандартное выравнивание для сетки */
+                padding: 20px; /* Добавим немного отступа */
             }
-
-            /* Styles for the category-full layout elements used within the component */
-            .hanime-catalog-component .category-full__title {
-                 /* Standard title styles from category-full */
-                 padding: 1.5em 2em 1em 2em; /* Add padding around the title */
-                 font-size: 1.8em; /* Adjust font size if needed */
-                 font-weight: 600;
-                 color: var(--text);
-                 flex-shrink: 0; /* Prevent title from shrinking */
-            }
-
-            .hanime-catalog-component .category-full__body {
-                /* This is where the scroll component will be placed */
-                flex-grow: 1; /* Allow the body to take remaining space */
-                overflow: hidden; /* Handled by the scroll component inside */
-                position: relative; /* Needed for absolute positioning inside if any */
-            }
-
-            /* Styles for the Lampa.Scroll component used within the body */
-            .hanime-catalog-component .scroll {
-                 width: 100%;
-                 height: 100%; /* Scroll takes the full height of the body */
-                 /* Lampa.Scroll already handles its own display/overflow based on its type */
-            }
-
-            /* Styles for the scroll's internal body (where cards are appended) */
-            .hanime-catalog-component .scroll__body.items-cards {
-                 /* Lampa's standard class for horizontal card lists */
-                 display: flex; /* Make the scroll body a flex container */
-                 flex-direction: row; /* Arrange items horizontally */
-                 flex-wrap: nowrap; /* Prevent wrapping */
-                 align-items: flex-start; /* Align items to the top */
-                 padding: 0 2em; /* Add horizontal padding */
-                 box-sizing: border-box; /* Include padding in element's total width */
-            }
-
-            /* Style adjustments for Lampa.Card within this horizontal list */
-            .hanime-catalog-component .card.card--category {
-                /* Inherits basic card styles, adjust spacing */
-                margin: 0 0.5em; /* Add horizontal margin between cards */
-                flex-shrink: 0; /* Prevent cards from shrinking */
-                /* Ensure card width is consistent */
-                width: 185px; /* Standard card width */
+            .hanime-card {
+                width: 185px; /* Стандартная ширина карточки постера */
+                margin: 0 10px 1.5em 10px; /* Отступы между карточками */
+                border-radius: 0.5em;
+                overflow: hidden;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                position: relative;
                 box-sizing: border-box;
             }
-
-             .hanime-catalog-component .card.card--category:first-child {
-                 margin-left: 0; /* Remove left margin for the first card */
-             }
-              .hanime-catalog-component .card.card--category:last-child {
-                 margin-right: 0; /* Remove right margin for the last card */
-             }
-
-            /* Ensure card content fits */
-            .hanime-catalog-component .card__view {
-                /* Card view already has aspect ratio, ensure it fits */
-                height: 270px; /* Standard card height */
+            /* Стиль фокуса - ваш текущий стиль выглядит хорошо и использует стандартный селектор */
+            .hanime-card.selector:focus {
+                transform: scale(1.05);
+                box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Красная тень для примера */
+                z-index: 5;
+                border: 3px solid rgba(255, 255, 255, 0.5);
             }
-
-             /* Focus styles for selectable elements (cards in this case) */
-             .hanime-catalog-component .selector:focus {
-                 /* Apply Lampa's default focus style or customize */
-                 transform: scale(1.05);
-                 box-shadow: 0 0 15px rgba(255, 0, 0, 0.7); /* Example custom shadow */
-                 z-index: 5;
-                 outline: 3px solid rgba(255, 255, 255, 0.5); /* Example custom outline */
-             }
-             /* Remove default focus outline on non-native focus */
-             .hanime-catalog-component .selector.focus:not(.native) {
+             /* Убираем стандартный outline, если он есть */
+             .hanime-card.selector.focus:not(.native) {
+                 border-color: transparent;
                  outline: none;
              }
 
-
-             .hanime-catalog-component .card__title {
-                 /* Adjust title styling if needed */
-                 text-align: center;
-                 padding: 0 0.5em;
+            .hanime-card__view {
+                position: relative;
+                height: 270px; /* Стандартная высота для постера */
+                background-color: rgba(255,255,255,0.05);
+                border-radius: 0.5em;
+                overflow: hidden;
+            }
+             .hanime-card__img {
+                 position: absolute;
+                 width: 100%;
+                 height: 100%;
+                 object-fit: cover;
+                 border-radius: 0.5em;
+             }
+             .hanime-card__title {
                  margin-top: 0.5em;
+                 padding: 0 0.5em;
+                 font-size: 1em;
                  font-weight: bold;
                  white-space: nowrap;
                  overflow: hidden;
                  text-overflow: ellipsis;
+                 text-align: center;
+                 color: #fff;
              }
+            /* Если описание не используется, можно его скрыть */
+            .hanime-card__description {
+                display: none;
+            }
 
-            /* Style for the menu icon */
+            /* Стиль иконки меню */
             .menu__ico svg {
                   width: 1.5em;
                   height: 1.5em;
             }
-
-             /* Style for the empty state */
-             .hanime-catalog-component .empty {
-                 /* Center empty state content within the body */
-                 display: flex;
-                 justify-content: center;
-                 align-items: center;
-                 height: 100%; /* Take full height of the body */
-             }
         `;
-        // Append the style element to the head
-        $('head').append($('<style>').html(style));
+        Lampa.Template.add('hanime-style', `<style>${style}</style>`);
 
-        // Add the HanimeComponent to Lampa's component registry
+        // Добавляем шаблон карточки
+        Lampa.Template.add('hanime-card', `
+            <div class="hanime-card card selector layer--visible layer--render"> <!-- Добавлен класс selector -->
+                <div class="hanime-card__view">
+                    <img src="{img}" class="hanime-card__img" alt="{title}" loading="lazy" />
+                </div>
+                <div class="hanime-card__title">{title}</div>
+            </div>
+        `);
+
+        // Регистрируем компонент в Lampa
         Lampa.Component.add('hanime_catalog', HanimeComponent);
-        console.log('Hanime Plugin', 'Component added');
 
-        // Function to add the item to the main menu
+        // Функция добавления пункта меню
         function addMenuItem() {
-            console.log('Hanime Plugin', 'Adding menu item');
+            // Проверяем, существует ли уже такой пункт меню, чтобы избежать дублирования
+            if ($('.menu .menu__list .menu__text:contains("Hanime Catalog")').length > 0) {
+                console.log("Hanime Plugin: Menu item already exists.");
+                return;
+            }
+
             var menu_item = $(`
-                <li class="menu__item selector">
+                <li class="menu__item selector"> <!-- Добавлен класс selector -->
                     <div class="menu__ico">
+                        <!-- Иконка SVG -->
                         <svg fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z"></path>
                         </svg>
@@ -582,21 +447,23 @@
                 </li>
             `);
             menu_item.on('hover:enter', function () {
-                // Push a new activity with the custom component
+                // При нажатии запускаем новую активность с нашим компонентом
                 Lampa.Activity.push({
-                    url: '', // No specific URL needed for this component's initial state
-                    title: 'Hanime Catalog', // Title for the activity header
-                    component: 'hanime_catalog', // The component to load
-                    page: 1 // Initial page, might not be strictly used by this component but good practice
+                    url: '', // URL активности (можно оставить пустым, если не используется для роутинга)
+                    title: 'Hanime Catalog', // Заголовок активности
+                    component: 'hanime_catalog', // Имя зарегистрированного компонента
+                    page: 1 // Номер страницы (если применимо)
                 });
             });
-            // Append to the correct menu list (assuming the first one is the main)
-            // Use .eq(0) to get the first list
+            // Добавляем пункт меню в первое меню (обычно главное)
             $('.menu .menu__list').eq(0).append(menu_item);
-             console.log('Hanime Plugin', 'Menu item appended');
+            console.log("Hanime Plugin: Menu item added.");
         }
 
-        // Wait for the Lampa app to be ready before adding the menu item
+        // Добавляем стили в head документа
+        $('head').append(Lampa.Template.get('hanime-style', {}, true));
+
+        // Ждем готовности приложения Lampa, прежде чем добавлять пункт меню
         if (window.appready) {
              addMenuItem();
         } else {
@@ -606,11 +473,10 @@
                  }
              });
         }
-
-        console.log('Hanime Plugin', 'Initialization complete');
+         console.log("Hanime Plugin: Started.");
     }
 
-    // Execute the main plugin initialization function
+    // Запускаем плагин
     startPlugin();
 
 })();
