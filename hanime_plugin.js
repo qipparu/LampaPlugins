@@ -3,7 +3,6 @@
 
     // Убираем кастомный HanimeCard и его шаблон, используем стандартный Lampa.Card и его шаблон
     // Убираем кастомные стили
-    // Lampa.Template.add('hanime-style', ...); // Удаляем это
 
 
     function HanimeComponent(componentObject) {
@@ -14,11 +13,11 @@
         var items = [];
         // Создаем главный DOM элемент компонента нативным JS
         var html = document.createElement('div');
-        html.classList.add('hanime-catalog'); // Можно оставить класс-контейнер для специфичных, не влияющих на макет стилей если нужны
+        html.classList.add('hanime-catalog'); // Оставляем класс-контейнер, если нужно
 
-        // Создаем тело каталога, используем стандартные классы
+        // Создаем тело каталога, используем стандартные классы Lampa для макета
         var body = document.createElement('div');
-        body.classList.add('hanime-catalog__body', 'category-full'); // Используем стандартный класс Lampa для макета
+        body.classList.add('hanime-catalog__body', 'category-full');
 
         var active = 0; // Индекс активного элемента в items
         var lastFocusedElement = null; // Последний сфокусированный DOM элемент (нативный элемент)
@@ -60,7 +59,7 @@
                 false,
                 {
                     dataType: 'json',
-                    timeout: 15000 // Увеличим таймаут на всякий случай
+                    timeout: 20000 // Увеличим таймаут на всякий случай
                 }
             );
         };
@@ -101,7 +100,16 @@
             card.onFocus = function(target, card_data) {
                 // target - нативный DOM элемент карточки, который получил фокус
                 lastFocusedElement = target; // Сохраняем сфокусированный DOM элемент
-                active = items.indexOf(card); // Сохраняем индекс активной карточки
+
+                // Находим индекс текущей карточки в массиве items
+                const currentActiveIndex = items.indexOf(card);
+                 if (currentActiveIndex !== -1) {
+                     active = currentActiveIndex; // Обновляем active
+                 } else {
+                      console.warn("Hanime Plugin: Focused card not found in items array.");
+                      active = 0; // Сброс на всякий случай
+                 }
+
 
                 // Обновляем скролл, чтобы текущая карточка была видна
                  scroll.update(card.render(true));
@@ -144,19 +152,22 @@
 
             // Настраиваем скролл
             scroll.minus();
-            // scroll.onEnd = this.next.bind(this); // Для пагинации, если будет
-            // scroll.onScroll = this.limit.bind(this); // Можно привязать limit к скроллу для доп. оптимизации
 
-            // Обработчик колеса мыши
+            // === ИСПРАВЛЕНИЕ: Изменяем onWheel для делегирования контроллеру ===
             scroll.onWheel = (step)=>{
-                // Если контроллер компонента не активен, активируем его
-                if(!Lampa.Controller.own(this)) this.start();
-                 // Если контроллер активен, двигаем навигатор
+                // Если компонент Hanime - текущий активный контроллер
                 if(Lampa.Controller.own(this)) {
-                     if(step > 0) Lampa.Navigator.move('down');
-                     else Lampa.Navigator.move('up');
+                     // Делегируем действие нашему контроллеру
+                     if(step > 0) this.down(); // Вызываем свой метод down
+                     else this.up();   // Вызываем свой метод up
+                } else {
+                    // Если мы не активны, но колесо прокрутили на нашем элементе,
+                    // пытаемся активировать наш компонент.
+                    this.start();
                 }
             };
+            // ===============================================================
+
 
             // Добавляем каждую карточку
             metas.forEach(this.appendCard.bind(this));
@@ -174,7 +185,6 @@
         };
 
         // Метод для управления видимостью карточек (layer--render)
-        // Navigator.setCollection здесь НЕ вызывается
         this.limit = function() {
             if (!items || items.length === 0) return;
 
@@ -182,9 +192,7 @@
             let limit_view = 25;
 
             // Определяем диапазон элементов для рендеринга
-            // active может быть -1 если фокус потерян или еще не установлен
             let current_active = active >= 0 && active < items.length ? active : 0;
-
 
             let render_start = Math.max(0, current_active - Math.floor(limit_view / 2));
             let render_end = render_start + limit_view;
@@ -309,7 +317,6 @@
 
             this.activity.loader(false);
             // При пустом состоянии, контроллер должен быть привязан к Empty
-            // Не вызываем toggle здесь, empty.start() сам переключит контроллер
             empty.start(); // Активируем контроллер Empty
             this.start = empty.start; // Переопределяем start, чтобы он запускал Empty
         };
@@ -319,10 +326,30 @@
             // Логика загрузки перенесена в start()
         };
 
+        // === Добавляем методы up и down для навигации по стрелкам ===
+        this.up = function(){
+             if (Lampa.Navigator.canmove('up')) {
+                  Lampa.Navigator.move('up');
+             } else {
+                 // Если двигаться вверх некуда в коллекции, переключаемся на шапку/заголовок
+                 Lampa.Controller.toggle('head');
+             }
+        }
+
+        this.down = function(){
+             if (Lampa.Navigator.canmove('down')) {
+                  Lampa.Navigator.move('down');
+                  // Здесь можно добавить логику подгрузки следующей страницы, если бы была пагинация
+                  // this.next();
+             }
+        }
+        // ==========================================================
+
+
         this.start = function () {
             console.log("Hanime Plugin: Component start");
 
-            // Если каталог еще не загружен, загружаем его
+            // Если каталог еще не загружен, загружаем его в первый раз
             if (items.length === 0 && !this._catalog_loaded) {
                  this._catalog_loaded = true; // Флаг, чтобы загрузить один раз
                  console.log("Hanime Plugin: Loading catalog for the first time.");
@@ -336,74 +363,78 @@
                      link: this, // Ссылка на экземпляр компонента
                      toggle: function () {
                          console.log("Hanime Plugin: Controller Toggle activated");
+
+                         if (!Lampa.Navigator) {
+                             console.error("Hanime Plugin: Lampa.Navigator is undefined during controller toggle.");
+                             // Возможно, здесь нужно обработать ошибку или вернуться в безопасное состояние
+                             return false; // Не можем настроить навигацию
+                         }
+
                          if (items.length === 0) {
                              console.warn("Hanime Plugin: No items to set collection for.");
-                             // Если элементов нет, возможно, нужно переключиться на empty state, если он еще не активен
-                             // empty() уже это делает, но на всякий случай
-                             if (!Lampa.Controller.own(this) || (Lampa.Controller.own(this) && !Lampa.Navigator.collection().length)) {
-                                 // Если текущий контроллер не наш, или наш, но без коллекции,
-                                 // и мы не в пустом состоянии, возможно, нужно его отобразить.
-                                 // Но empty() должен был вызваться в build, если список пуст.
+                             // Переключаемся на empty state, если он еще не активен
+                             if (this.empty && !Lampa.Controller.own(this.empty)) { // Проверка, что empty существует и не активен
+                                 this.empty("Каталог пуст.");
                              }
                              return false; // Нечего фокусировать/контролировать
                          }
 
-                         // Получаем нативные DOM элементы всех карточек, которые должны быть в коллекции
-                         // Используем limit() для определения, какие элементы должны быть в коллекции
-                         // Хотя Navigator может работать со всей коллекцией, limit помогает управлять layer--render
-                         // Давайте для Navigator.setCollection возьмем все items.render(true), чтобы навигация работала по всему списку
+                         // Получаем нативные DOM элементы всех карточек
                          const itemElements = items.map(item => item.render(true)).filter(el => el !== null);
 
+                         if (itemElements.length === 0) {
+                              console.warn("Hanime Plugin: No DOM elements to set collection for.");
+                               if (this.empty && !Lampa.Controller.own(this.empty)) {
+                                     this.empty("Нет отображаемых элементов.");
+                                }
+                              return false;
+                         }
 
                          // Устанавливаем коллекцию элементов, по которым будет работать Navigator
-                         // ЭТО ДОЛЖНО ПРОИСХОДИТЬ, КОГДА КОНТРОЛЛЕР СТАНОВИТСЯ АКТИВНЫМ
                          Lampa.Navigator.setCollection(itemElements);
                          console.log("Hanime Plugin: Navigator collection set with", itemElements.length, "items.");
 
-                         // Восстанавливаем фокус на последнем элементе, или на первом
+                         // Определяем элемент для фокусировки: последний сфокусированный или первый
                          const elementToFocus = lastFocusedElement && itemElements.includes(lastFocusedElement)
                                               ? lastFocusedElement
                                               : (itemElements.length > 0 ? itemElements[0] : false);
 
                          if (elementToFocus) {
-                             console.log("Hanime Plugin: Focusing element");
-                             Lampa.Controller.collectionFocus(elementToFocus, scroll.render(true)); // Фокусируемся через Controller
-                             // Вызываем onFocus для первого элемента вручную, если фокусируемся на нем в первый раз
-                             // и это не возврат к ранее сфокусированному элементу
-                              if (elementToFocus === itemElements[0] && lastFocusedElement !== elementToFocus) {
-                                   // Находим экземпляр Card по элементу
-                                   const firstCard = items.find(item => item.render(true) === elementToFocus);
-                                   if(firstCard && firstCard.onFocus) {
-                                       active = 0; // Убедимся, что active установлен
-                                       firstCard.onFocus(elementToFocus, firstCard.data);
-                                   }
-                              } else if (lastFocusedElement === elementToFocus && active >= 0 && active < items.length) {
-                                  // Если восстанавливаем фокус на ранее сфокусированном элементе,
-                                  // возможно, нужно снова вызвать onFocus для обновления скролла/фона, если они могли измениться
-                                  // (Скролл обновляется в collectionFocus, фон обновляется в onFocus)
-                                   const lastCard = items[active];
-                                   if(lastCard && lastCard.onFocus) {
-                                       lastCard.onFocus(elementToFocus, lastCard.data);
-                                   }
-                                   // Убедимся, что limit вызван для обновления layer--render
-                                    this.limit();
-                              }
+                             console.log("Hanime Plugin: Focusing element:", elementToFocus);
+                             // Фокусируемся через Controller. collectionFocus сам вызывает Navigator.focus
+                             Lampa.Controller.collectionFocus(elementToFocus, scroll.render(true));
 
+                             // Находим соответствующий экземпляр Card и вызываем его onFocus
+                             const focusedCard = items.find(item => item.render(true) === elementToFocus);
+                             if(focusedCard && focusedCard.onFocus) {
+                                 // Убедимся, что active индекс корректен перед вызовом onFocus
+                                  const focusedIndex = items.indexOf(focusedCard);
+                                  if(focusedIndex !== -1) {
+                                      active = focusedIndex;
+                                  } else {
+                                       active = 0; // Сброс
+                                  }
+                                  focusedCard.onFocus(elementToFocus, focusedCard.data); // Вызываем onFocus
+                             } else {
+                                  console.warn("Hanime Plugin: Could not find focused card instance or onFocus method.");
+                             }
 
                          } else {
-                             console.warn("Hanime Plugin: No element to focus.");
-                             // Если нет элементов для фокуса, возможно, нужно перейти в empty state
-                             // if (items.length === 0) this.empty("Каталог пуст."); // Это уже должно обрабатываться в build
+                             console.warn("Hanime Plugin: No element to focus after setting collection.");
+                             // Если сюда дошли, хотя items.length > 0, это странно.
+                             // Возможно, коллекция Navigator не совпадает с itemsElements.
+                             // Или нужно переключиться в empty state
                          }
 
                          // Сообщаем Lampa, что наш главный элемент готов и можно управлять видимостью слоев
-                         Lampa.Layer.update(html); // Убедимся, что слои обновлены
-                         Lampa.Layer.visible(html); // Сделать этот слой видимым
-
+                         // Layer.update нужен для пересчета позиций элементов
+                         Lampa.Layer.update(html);
+                         // Layer.visible делает слой видимым. Возможно, уже вызвано activity.toggle
+                         // Lampa.Layer.visible(html); // Это может быть лишним, activity.toggle уже делает это
 
                      }.bind(this), // Привязываем контекст toggle
                      left: function () {
-                         if (Lampa.Navigator.canmove('left')) {
+                         if (Lampa.Navigator && Lampa.Navigator.canmove('left')) {
                               Lampa.Navigator.move('left');
                          } else {
                              // Если двигаться некуда, переключаемся на меню
@@ -411,26 +442,15 @@
                          }
                      },
                      right: function () {
-                         if (Lampa.Navigator.canmove('right')) {
+                         if (Lampa.Navigator && Lampa.Navigator.canmove('right')) {
                               Lampa.Navigator.move('right');
                          }
                          // else if (this.onRight) this.onRight(); // Если нужна какая-то логика справа
                      },
-                     up: function () {
-                         if (Lampa.Navigator.canmove('up')) {
-                              Lampa.Navigator.move('up');
-                         } else {
-                             // Если двигаться некуда, переключаемся на шапку
-                             Lampa.Controller.toggle('head');
-                         }
-                     },
-                     down: function () {
-                         if (Lampa.Navigator.canmove('down')) {
-                              Lampa.Navigator.move('down');
-                             // Опционально: загрузка следующей страницы, если бы была пагинация
-                             // this.next();
-                         }
-                     },
+                     // === Используем наши новые методы up/down ===
+                     up: this.up.bind(this),
+                     down: this.down.bind(this),
+                     // ==========================================
                      back: this.back.bind(this) // Привязываем контекст back
                  });
 
@@ -451,7 +471,9 @@
            // Останавливаем все процессы (загрузки и т.п.)
            network.clear();
            // Очищаем коллекцию навигатора, чтобы не было ссылок на удаляемые элементы
-            Lampa.Navigator.setCollection([]);
+           if (Lampa.Navigator) { // Проверка на существование Navigator
+               Lampa.Navigator.setCollection([]);
+           }
         };
 
         this.render = function (js) {
@@ -463,7 +485,9 @@
             console.log("Hanime Plugin: Component destroyed");
             network.clear();
             // Корректное удаление элементов и экземпляров
-            Lampa.Arrays.destroy(items); // Lampa.Arrays.destroy вызывает destroy() на каждом экземпляре Card
+            if (items) { // Проверка на существование items
+                Lampa.Arrays.destroy(items); // Lampa.Arrays.destroy вызывает destroy() на каждом экземпляре Card
+            }
             if (scroll) scroll.destroy();
             if (html) html.remove(); // Удаляем главный DOM элемент
 
