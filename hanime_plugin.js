@@ -961,45 +961,49 @@
              console.log("Hanime Plugin: Adding standard template fallbacks using Lampa.Template.add...");
              // Use Lampa.Template.get to check existence instead of Lampa.Template.has
              // Add these unconditionally if Lampa.Template.add is available, as they might be needed early
-             if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
-                 // Add templates if they don't exist (Lampa might provide them)
+             try {
                  if (!Lampa.Template.get('card_vote_temp')) Lampa.Template.add('card_vote_temp', '<div class="card__vote"></div>');
                  if (!Lampa.Template.get('card_quality_temp')) Lampa.Template.add('card_quality_temp', '<div class="card__quality"><div></div></div>');
                  if (!Lampa.Template.get('card_year_temp')) Lampa.Template.add('card_year_temp', '<div class="card__age"></div>');
                  if (!Lampa.Template.get('card_type_temp')) Lampa.Template.add('card_type_temp', '<div class="card__type"></div>');
                  if (!Lampa.Template.get('icon_lock')) Lampa.Template.add('icon_lock', `<svg style="width: 1em; height: 1em;" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17C13.11 17 14 16.11 14 15C14 13.89 13.11 13 12 13C10.89 13 10 13.89 10 15C10 16.11 10.89 17 12 17M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8M9 6C9 4.34 10.34 3 12 3C13.66 3 15 4.34 15 6V8H9V6M18 20H6V10H18V20Z"></path></svg>`);
                   console.log("Hanime Plugin: Standard template fallbacks added successfully.");
-             } else {
-                  console.error("Hanime Plugin: Lampa.Template.add or get method not available. Cannot add template fallbacks.");
+             } catch (e) {
+                  console.error("Hanime Plugin: Error adding standard template fallbacks:", e);
              }
              // --- End Add Standard Template Fallbacks ---
 
 
              console.log("Hanime Plugin: Adding hanime-card template...");
              // Use Lampa.Template.get to check existence instead of Lampa.Template.has
-             if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
-                 if (!Lampa.Template.get('hanime-card')) { // Check if our custom template exists
-                     Lampa.Template.add('hanime-card', `
-                         <div class="hanime-card card selector layer--visible layer--render">
-                             <div class="card__view">
-                                 <img src="./img/img_load.svg" class="card__img" alt="{title}" loading="lazy" />
-                                 <div class="card__icons">
-                                     <div class="card__icons-inner"></div>
+             try {
+                 if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
+                     if (!Lampa.Template.get('hanime-card')) { // Check if our custom template exists
+                         Lampa.Template.add('hanime-card', `
+                             <div class="hanime-card card selector layer--visible layer--render">
+                                 <div class="card__view">
+                                     <img src="./img/img_load.svg" class="card__img" alt="{title}" loading="lazy" />
+                                     <div class="card__icons">
+                                         <div class="card__icons-inner"></div>
+                                     </div>
+                                     <!-- Details elements are added dynamically by HanimeCard.addDetails -->
+                                     <!-- .card__vote, .card__quality, .card__type, .card__marker -->
                                  </div>
-                                 <!-- Details elements are added dynamically by HanimeCard.addDetails -->
-                                 <!-- .card__vote, .card__quality, .card__type, .card__marker -->
+                                 <div class="card__title">{title}</div>
+                                 <!-- .card__age is added dynamically by HanimeCard.addDetails -->
                              </div>
-                             <div class="card__title">{title}</div>
-                             <!-- .card__age is added dynamically by HanimeCard.addDetails -->
-                         </div>
-                     `);
-                      console.log("Hanime Plugin: HanimeCard template added successfully.");
+                         `);
+                          console.log("Hanime Plugin: HanimeCard template added successfully.");
+                     } else {
+                          console.log("Hanime Plugin: HanimeCard template already exists. Skipping add.");
+                     }
                  } else {
-                      console.log("Hanime Plugin: HanimeCard template already exists. Skipping add.");
+                      console.error("Hanime Plugin: Lampa.Template.add or get method not available for custom template.");
                  }
-             } else {
-                  console.error("Hanime Plugin: Lampa.Template.add or get method not available. Cannot add hanime-card template.");
+             } catch (e) {
+                 console.error("Hanime Plugin: Error adding hanime-card template:", e);
              }
+
 
              console.log("Hanime Plugin: Custom CSS block REMOVED as requested. Relying on standard Lampa styles.");
 
