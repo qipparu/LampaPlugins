@@ -755,11 +755,15 @@
             var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
             // var metaUrl = META_URL_TEMPLATE.replace('{id}', id); // Not strictly needed if list meta is sufficient
 
+            // Add logs to track the process
+            console.log("HanimeMainScreenComponent: fetchStreamAndMeta for ID:", id, " - Starting.");
+            console.log("HanimeMainScreenComponent: Stream URL being requested:", streamUrl);
+            console.log("HanimeMainScreenComponent: Meta data passed:", meta);
+
+
              // Show loader while fetching playback details
              if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(true);
              else console.warn("HanimeMainScreenComponent: Activity loader not available in fetchStreamAndMeta.");
-
-            console.log("HanimeMainScreenComponent: fetchStreamAndMeta for ID:", id);
 
             // Check network readiness
             if (!network || typeof network.native !== 'function') {
@@ -769,27 +773,34 @@
                 return;
             }
 
-            // Fetch only stream data. Use the 'meta' object passed from the card.
+            // Fetch stream data using network.native
             network.native(streamUrl,
                 // Success handler
                 (streamData) => {
                      if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false); // Hide loader
 
-                    console.log("HanimeMainScreenComponent: Stream data received:", streamData);
+                    console.log("HanimeMainScreenComponent: Stream data received (raw):", streamData);
                     console.log("HanimeMainScreenComponent: Meta Data (from list):", meta); // Use meta data passed from card
 
+                    // Check if stream data structure is valid
                     if (streamData && streamData.streams && Array.isArray(streamData.streams) && streamData.streams.length > 0) {
                         var streamToPlay = streamData.streams[0]; // Assuming the first stream is the primary one
-                        var finalStreamUrl = streamToPlay ? streamToPlay.url : null;
+                        console.log("HanimeMainScreenComponent: Selected stream object:", streamToPlay);
 
-                        // Apply proxy if needed
+                        var finalStreamUrl = streamToPlay ? streamToPlay.url : null;
+                        console.log("HanimeMainScreenComponent: Extracted stream URL:", finalStreamUrl);
+
+
+                        // Apply proxy if needed and PROXY_BASE_URL is defined
                         if(finalStreamUrl && PROXY_BASE_URL) {
                              try {
                                  var url = new URL(finalStreamUrl);
                                  // Check if the stream URL requires proxying based on hostname
+                                 // Be careful: The API might change hostnames or require proxy for other reasons.
+                                 // This check is specific to the previous observation ('highwinds-cdn.com').
                                  if (url.hostname && url.hostname.includes('highwinds-cdn.com')) {
                                      finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
-                                     console.log("HanimeMainScreenComponent: Stream URL proxied.");
+                                     console.log("HanimeMainScreenComponent: Stream URL proxied to:", finalStreamUrl);
                                  } else {
                                     console.log("HanimeMainScreenComponent: Stream URL does not require proxy:", finalStreamUrl);
                                  }
@@ -797,23 +808,37 @@
                                 console.error("HanimeMainScreenComponent: Failed to parse or proxy stream URL:", e);
                                  console.log("HanimeMainScreenComponent: Using original stream URL due to error:", finalStreamUrl);
                              }
+                        } else if (finalStreamUrl) {
+                            console.log("HanimeMainScreenComponent: Proxy not needed or PROXY_BASE_URL not defined. Using original URL:", finalStreamUrl);
                         }
 
+
                         // Prepare the player object
+                        // Ensure meta data is available and has required properties for the player
+                        if (!meta) {
+                            console.error("HanimeMainScreenComponent: Meta data is missing for player launch.");
+                             if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка данных для плеера.', 5000);
+                             return; // Stop if meta is missing
+                        }
+
                         var playerObject = {
-                            title: meta ? (meta.name || meta.title || 'Без названия') : 'Без названия', // Use title from meta
-                            url: finalStreamUrl,
-                            poster: meta ? (meta.poster || meta.background || '') : '', // Use poster from meta
+                            title: meta.name || meta.title || 'Без названия', // Use title from meta
+                            url: finalStreamUrl, // Use the final (potentially proxied) URL
+                            poster: meta.poster || meta.background || '', // Use poster from meta
+                            // Add other relevant meta fields if player component uses them (e.g., year, duration)
+                            // Check Lampa's player documentation for what it expects.
                         };
+                         console.log("HanimeMainScreenComponent: Player object prepared:", playerObject);
 
-                        // Launch the player if URL and Lampa.Player are available
+
+                        // Launch the player if URL is valid and Lampa.Player component is available
                         if (playerObject.url && window.Lampa && Lampa.Player && typeof Lampa.Player.play === 'function' && typeof Lampa.Player.playlist === 'function') {
-                             console.log("HanimeMainScreenComponent: Launching player.");
-                             Lampa.Player.play(playerObject);
-                             Lampa.Player.playlist([playerObject]); // Player might need a playlist array
+                             console.log("HanimeMainScreenComponent: Launching player with URL:", playerObject.url);
+                             Lampa.Player.play(playerObject); // Play the single item
+                             Lampa.Player.playlist([playerObject]); // Set the playlist (usually an array)
 
-                             // Add item to history (using the meta data provided)
-                             if (meta && window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.add === 'function') {
+                             // Add item to history using the meta data provided
+                             if (window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.add === 'function') {
                                     // Structure the history meta data appropriately for Lampa
                                     const historyMeta = {
                                         id: meta.id || '', // Required
@@ -822,28 +847,27 @@
                                         runtime: meta.runtime, // If available
                                          year: meta.year || (meta.release_date ? meta.release_date.slice(0,4) : ''), // If available
                                         original_name: meta.original_name || '',
-                                        // Add other fields Lampa's history/favorite might use if available in meta
                                          type: meta.type || (meta.first_air_date ? 'tv' : 'movie') // Important for history/favorite checks
+                                        // Add other fields Lampa's history/favorite might use if available in meta
                                     };
-                                    Lampa.Favorite.add('history', historyMeta, 100); // Add to history, percentage watched 100 (start)
+                                    // Add to history, 100% watched status indicates "started" or "seen"
+                                    // Use 0 if you want to track progress, but this API provides full videos usually.
+                                    Lampa.Favorite.add('history', historyMeta, 100);
                                     console.log("HanimeMainScreenComponent: Added to history.", historyMeta);
 
-                                    // Update the card's icons after adding to history
-                                     // This needs to find the specific card element for this ID
-                                     // A more robust way would be to have the Card class update itself
-                                     // based on global Favorite/Timeline events, or pass the element/instance here.
-                                     // For now, we'll just log, as direct update is tricky without the element.
-                                     // The 'visible' event and context menu onCheck/onDraw already handle icon updates.
-                                     console.log("HanimeMainScreenComponent: History updated. Card icons should update on focus or visibility.");
+                                    // Note: Updating card icons after history add is handled by 'visible' event
+                                    // or context menu's onCheck/onDraw. No explicit call needed here.
 
                              } else {
                                   console.warn("HanimeMainScreenComponent: Lampa.Favorite or add method not available to add to history.");
                              }
 
                         } else {
-                             console.error("HanimeMainScreenComponent: Cannot launch player. Missing stream URL, Lampa.Player, or methods.");
+                             console.error("HanimeMainScreenComponent: Cannot launch player. Missing stream URL, Lampa.Player component, or required methods.");
                              if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
-                                 Lampa.Noty.show(playerObject.url ? 'Компонент плеера недоступен.' : 'Не удалось получить ссылку на поток.', 5000);
+                                 const errorMessage = playerObject.url ? 'Компонент плеера недоступен.' : 'Не удалось получить ссылку на поток.';
+                                 console.error("HanimeMainScreenComponent:", errorMessage);
+                                 Lampa.Noty.show(errorMessage, 5000);
                              }
                         }
 
