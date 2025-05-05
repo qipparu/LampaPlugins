@@ -2,7 +2,6 @@
     'use strict';
 
     // Define the API base URL and the categories with their titles and relative URLs
-    // These are now global within the IIFE and used by the main screen component.
     var API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
     var CATEGORIES = {
         newset: { url: "/catalog/movie/newset.json", title: "Последние добавленные" },
@@ -14,9 +13,9 @@
     var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
     var PROXY_BASE_URL = "http://77.91.78.5:3000"; // Keep this if needed for proxying
 
-
-    // HanimeCard remains the same - it represents a single card UI element
-    function HanimeCard(data, componentRef) { // componentRef will be the HanimeLineComponent instance
+    // --- HanimeCard Class (Mostly Unchanged) ---
+    // Represents a single card element and its data binding/event handling
+    function HanimeCard(data, componentRef) {
         var processedData = {
             id: data.id,
             title: data.name || data.title || 'Без названия',
@@ -33,7 +32,11 @@
             title: processedData.title
         });
 
-        var cardElement = $(cardTemplate);
+        var cardElement = $(cardTemplate); // Use jQuery
+
+        // Attach data and component reference to the element for later access
+        cardElement.data('cardData', processedData);
+        cardElement.data('cardComponentRef', componentRef); // Reference to the main screen component
 
         this.addicon = function(name) {
             var iconsContainer = cardElement.find('.card__icons-inner');
@@ -96,7 +99,7 @@
                       let titleElement = cardElement.find('.card__title');
                       if (titleElement.length) {
                           titleElement.after(newAgeElement);
-                          console.warn("HanimeCard: Created .card__age element dynamically. Prefer including in template.");
+                          // console.warn("HanimeCard: Created .card__age element dynamically. Prefer including in template.");
                       } else {
                           cardElement.append(newAgeElement);
                           console.error("HanimeCard: Cannot find .card__title to place .card__age dynamically.");
@@ -110,7 +113,7 @@
             cardElement.find('.card__marker').remove();
 
              var status = (window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.check === 'function') ? Lampa.Favorite.check(processedData) : {};
-             if(Object.keys(status).length === 0 && window.Lampa && Lampa.Favorite) console.warn("HanimeCard: Lampa.Favorite.check returned empty status for", processedData.title, ". Data:", processedData);
+             if(Object.keys(status).length === 0 && window.Lampa && Lampa.Favorite) console.log("HanimeCard: Lampa.Favorite.check returned empty status for", processedData.title, ". Data:", processedData);
 
             if (status.book) this.addicon('book');
             if (status.like) this.addicon('like');
@@ -134,6 +137,7 @@
              }
         };
 
+        // This is called when the card becomes visible in the scrollable area
         this.onVisible = function() {
              var imgElement = cardElement.find('.card__img');
 
@@ -157,70 +161,51 @@
                       }
                  } else {
                      console.warn("Hanime Plugin: Lampa.ImageCache not available. Using basic image loading.");
-                      imgElement[0].onload = () => { cardElement.addClass('card--loaded'); console.log("HanimeCard: Image loaded (basic):", src); };
+                      imgElement[0].onload = () => { cardElement.addClass('card--loaded'); /* console.log("HanimeCard: Image loaded (basic):", src); */ };
                      imgElement[0].onerror = () => { console.error('Hanime Plugin: Image load error (basic):', src); imgElement.attr('src', './img/img_broken.svg'); };
                      imgElement.attr('src', src || './img/img_broken.svg');
                  }
-             } else {
-             }
+             } // If img already has src and not loading placeholder, do nothing
 
             this.updateFavoriteIcons();
         }
 
+        // Creates DOM elements and attaches basic listeners (visible)
         this.create = function(){
              if (cardElement.data('created')) {
-                 return;
+                 return; // Already created
              }
 
-             if (typeof cardElement.on === 'function') {
-                cardElement.on('hover:focus', function () {
-                     // Delegate scroll update to the parent component (HanimeLineComponent)
-                     if (componentRef && componentRef.updateScrollToFocus && typeof componentRef.updateScrollToFocus === 'function') {
-                          componentRef.updateScrollToFocus(cardElement);
-                     }
-                     this.update(); // Update card icons/details on focus
-                }.bind(this));
+             // Event listeners for focus and interaction will be handled by the main screen controller
+             // and delegated based on focused element.
 
-                 cardElement.on('hover:enter', function () {
-                     // Delegate click event to the parent component
-                     if (componentRef && componentRef.onCardClick && typeof componentRef.onCardClick === 'function') {
-                         componentRef.onCardClick(processedData);
-                     }
-                }.bind(this));
-
-                cardElement.on('hover:long', function(){
-                     // Delegate long press event to the parent component
-                     if (componentRef && componentRef.showCardContextMenu && typeof componentRef.showCardContextMenu === 'function') {
-                          componentRef.showCardContextMenu(cardElement, processedData);
-                     }
-                 }.bind(this));
-             } else {
-                 console.warn("HanimeCard: jQuery on() method not available to attach hover events.");
-             }
-
-             this.card = cardElement[0];
+             this.card = cardElement[0]; // Get native DOM element
              if (this.card && typeof this.card.addEventListener === 'function') {
                 this.card.addEventListener('visible', this.onVisible.bind(this));
              } else {
                  console.warn("HanimeCard: Cannot attach 'visible' event listener, native element or addEventListener not available.");
              }
 
+             // Add details and update icons once
              setTimeout(() => {
                   this.addDetails();
-                  this.update();
+                  this.updateFavoriteIcons(); // Initial update
              }, 0);
+
 
              cardElement.data('created', true);
         }
 
+        // Called to update dynamic parts like favorite icons
         this.update = function(){
             this.updateFavoriteIcons();
-             // Lampa's watched_status might rely on data attributes or classes added directly.
-             // If needed, uncomment and ensure it works with the cardElement structure.
+             // Lampa's Timeline watched status update is often done externally via Controller.item()
+             // We don't need to do it inside the card itself typically.
              // if(window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.watched_status === 'function') Lampa.Timeline.watched_status(cardElement, processedData);
              // else console.warn("HanimeCard: Cannot update watched status, Lampa.Timeline not available or method missing.");
         }
 
+        // Returns the card's DOM element (jQuery or native)
         this.render = function(js){
              if (!cardElement.data('created')) {
                  this.create();
@@ -228,577 +213,514 @@
             return js ? cardElement[0] : cardElement;
         }
 
+        // Destroys the card instance and its DOM element
         this.destroy = function(){
+             console.log("HanimeCard: destroy()", processedData.title);
              if(this.card && typeof this.card.removeEventListener === 'function' && this.onVisible) this.card.removeEventListener('visible', this.onVisible.bind(this));
              if(cardElement && typeof cardElement.remove === 'function') cardElement.remove();
+
+             // Remove data attached to the element
+             if (cardElement && typeof cardElement.removeData === 'function') {
+                cardElement.removeData('cardData');
+                cardElement.removeData('cardComponentRef');
+                cardElement.removeData('created');
+             }
+
+             // Nullify references
              processedData = null; cardElement = null; this.card = null; componentRef = null;
         }
     }
 
-    // HanimeLineComponent - Represents a single horizontal line of cards for one category
-    function HanimeLineComponent(categoryKey, categoryTitle, onCardClick, showCardContextMenu, componentRef) {
-        var network = null;
+    // --- HanimeRow Class (Internal Helper for Main Screen) ---
+    // Represents a single horizontal row/list of cards for a specific category
+    function HanimeRow(categoryKey, categoryTitle, itemsData, parentScreenRef) {
         var scroll = null;
-
         var items = []; // Array of HanimeCard instances
-        var html = null; // The main items-line element
-        var itemsContainer = null; // The items-cards element inside scroll
+        var html = null; // The main DOM element for this row (.items-line)
+        var itemsContainer = null; // The container for cards (.items-cards)
 
-        var lastFocusedCardElement = null; // Keep track of last focused card in this line
+        this.categoryKey = categoryKey;
+        this.categoryTitle = categoryTitle;
+        this.itemsData = itemsData; // The raw data for items in this row
+        this.$cards = $(); // jQuery collection of card DOM elements
+        this.parentScreenRef = parentScreenRef; // Reference to the main screen component
 
-        var currentCategoryUrl = API_BASE_URL + CATEGORIES[categoryKey].url;
-        var currentTitle = categoryTitle;
+        console.log("HanimeRow: Initializing for category:", categoryTitle);
 
-        // Reference to the parent component (HanimeCatalogScreen)
-        var parentComponentRef = componentRef;
-
-        // Callbacks delegated from parent
-        var cardClickHandler = onCardClick;
-        var cardContextMenuHandler = showCardContextMenu;
-
-
+        // Builds the row's DOM structure initially
         this.buildLayout = function() {
-            html = $(`
-                <div class="items-line layer--visible layer--render items-line--type-cards">
-                    <div class="items-line__head">
-                        <div class="items-line__title">${currentTitle}</div> <!-- Use dynamic title -->
-                    </div>
-                    <div class="items-line__body">
-                    </div>
-                </div>
-            `);
+             html = $(`
+                 <div class="items-line layer--visible layer--render items-line--type-cards">
+                     <div class="items-line__head">
+                         <div class="items-line__title">${this.categoryTitle}</div>
+                     </div>
+                     <div class="items-line__body">
+                     </div>
+                 </div>
+             `);
              itemsContainer = $('<div class="items-cards"></div>');
+
+             // Initialize scroll for this row
+             if (window.Lampa && typeof Lampa.Scroll === 'function') {
+                  scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, direction: 'horizontal' });
+                  console.log("HanimeRow:", this.categoryTitle, "- Lampa.Scroll initialized (horizontal).");
+             } else {
+                  console.warn("HanimeRow:", this.categoryTitle, "- Lampa.Scroll not available.");
+             }
         };
 
-        this.fetchCatalog = function () {
-            var _this = this;
-             // Use parent's loader if available, otherwise log a warning
-             if(parentComponentRef && parentComponentRef.activity && typeof parentComponentRef.activity.loader === 'function') parentComponentRef.activity.loader(true);
-             else console.warn("HanimeLineComponent: Parent activity loader not available in fetchCatalog for", categoryKey);
+        // Populates the row with cards from the data
+        this.buildCards = function() {
+             console.log("HanimeRow:", this.categoryTitle, "- Building UI with", this.itemsData.length, "items.");
 
-             console.log("HanimeLineComponent:", categoryKey, "- Starting request to", currentCategoryUrl);
+             if (!(itemsContainer && typeof itemsContainer.empty === 'function' && scroll && html && typeof html.find === 'function' && typeof html.append === 'function' && typeof scroll.append === 'function' && typeof scroll.render === 'function')) {
+                  console.error("HanimeRow:", this.categoryTitle, "- Missing critical DOM/Lampa dependencies to build cards. Aborting UI build.");
+                   return;
+             }
+
+            itemsContainer.empty();
+            items = [];
+
+            if(itemsContainer && scroll && window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function') {
+                 this.itemsData.forEach(function (meta) {
+                    // Pass the parentScreenRef to each card instance
+                    var card = new HanimeCard(meta, parentScreenRef);
+                    var cardElement = card.render(); // Get the card's jQuery element
+
+                    // No need to attach click/long listeners here, the main controller handles them
+                    // cardElement.on('hover:enter', ...);
+                    // cardElement.on('hover:long', ...);
+
+                     itemsContainer.append(cardElement); // Append jQuery element
+                    items.push(card);
+                });
+                 console.log("HanimeRow:", this.categoryTitle, "- Created and added", items.length, "cards to itemsContainer.");
+
+                scroll.append(itemsContainer); // Append jQuery element
+
+                html.find('.items-line__body').empty().append(scroll.render(true)); // Append native DOM element
+
+                 // Store the collection of selectable card elements for this row
+                 this.$cards = itemsContainer.find('.selector');
+                 console.log("HanimeRow:", this.categoryTitle, "- Found", this.$cards.length, "selectable cards.");
+
+            } else {
+                console.error("HanimeRow:", this.categoryTitle, "- Missing required objects or methods before building cards.");
+                 // Error state might be handled by main screen
+            }
+        };
+
+        // Public method: Returns the main DOM element for this row
+        this.render = function() {
+            if (!html) {
+                 this.buildLayout();
+                 this.buildCards(); // Build cards immediately after layout if data is ready
+            }
+            return html[0]; // Return native DOM element
+        }
+
+        // Public method: Returns the jQuery collection of selectable card elements in this row
+        this.getSelectableElements = function() {
+             return this.$cards;
+        }
+
+        // Public method: Updates the scroll position to make the given element visible
+        this.updateScrollPosition = function(element) {
+            if (scroll && typeof scroll.update === 'function' && element && typeof element.length !== 'undefined') {
+                scroll.update($(element), true); // Ensure element is a jQuery object
+            } else {
+                 console.warn("HanimeRow:", this.categoryTitle, "- Scroll instance or update method, or valid element missing to scroll.");
+            }
+        }
+
+        // Public method: Destroys the row instance and its DOM elements
+        this.destroy = function() {
+             console.log("HanimeRow:", this.categoryTitle, "- destroy() called.");
+             if (items && window.Lampa && Lampa.Arrays && typeof Lampa.Arrays.destroy === 'function') {
+                 Lampa.Arrays.destroy(items); // Destroys all HanimeCard instances
+                 console.log("HanimeRow:", this.categoryTitle, "- Destroyed items array.");
+             }
+            items = null; this.itemsData = null; this.$cards = $(); // Clear references
+
+             if (scroll && typeof scroll.destroy === 'function') {
+                 scroll.destroy();
+                 console.log("HanimeRow:", this.categoryTitle, "- Destroyed scroll instance.");
+             }
+             scroll = null;
+
+             if (html && typeof html.remove === 'function') {
+                 html.remove();
+                 console.log("HanimeRow:", this.categoryTitle, "- Removed html element from DOM.");
+             }
+            html = null; itemsContainer = null; this.parentScreenRef = null;
+
+            console.log("HanimeRow:", this.categoryTitle, "- destroy() finished.");
+        }
+
+        // Initial build
+        if (this.itemsData && Array.isArray(this.itemsData)) {
+            this.buildLayout();
+            this.buildCards();
+        } else {
+             console.error("HanimeRow: Initialized without valid itemsData for category:", categoryTitle);
+             // This row might be created empty or an error message shown by the parent
+        }
+    }
+
+
+    // --- HanimeMainScreenComponent Class (Main Component) ---
+    // Manages the entire screen, fetches data for all categories,
+    // creates HanimeRow instances, and manages the Controller navigation.
+    function HanimeMainScreenComponent(componentObject) {
+        var network = null;
+        var html = null; // Main container element for the screen
+        var rows = []; // Array of HanimeRow instances
+        var focusedRowIndex = 0; // Index of the currently focused row
+        var lastFocusedItemIndex = 0; // Index of the focused item within the focused row
+
+        this.activity = componentObject.activity; // Keep activity reference for loader
+
+        console.log("HanimeMainScreenComponent: Initializing.");
+
+        // Builds the main screen container layout
+        this.buildLayout = function() {
+            html = $(`
+                <div class="hanime-main-screen">
+                    <!-- Rows will be appended here -->
+                </div>
+            `);
+             console.log("HanimeMainScreenComponent: Main layout built.");
+        };
+
+        // Fetches data for all categories concurrently
+        this.fetchCatalogs = function () {
+            var _this = this;
+             if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(true);
+             else console.warn("HanimeMainScreenComponent: Activity loader not available in fetchCatalogs.");
+
+            console.log("HanimeMainScreenComponent: fetchCatalogs() - Starting requests for all categories.");
 
              if (!network && window.Lampa && typeof Lampa.Reguest === 'function') {
                   network = new Lampa.Reguest();
-                  console.log("HanimeLineComponent:", categoryKey, "- Lampa.Reguest initialized.");
+                  console.log("HanimeMainScreenComponent: Lampa.Reguest initialized.");
              }
 
              if (network && typeof network.clear === 'function') network.clear();
-             else console.warn("HanimeLineComponent:", categoryKey, "- Network clear method not available.");
+             else console.warn("HanimeMainScreenComponent: Network clear method not available.");
 
-             if(network && currentCategoryUrl && typeof network.native === 'function'){
-                network.native(currentCategoryUrl, // Use dynamic URL
-                    function (data) {
-                        if (data && data.metas && Array.isArray(data.metas)) {
-                             if (data.metas.length > 0) {
-                                _this.build(data.metas);
-                             } else {
-                                _this.empty("Каталог пуст.");
-                             }
-                        } else {
-                            _this.empty("Неверный формат данных от API.");
-                            console.error("HanimeLineComponent:", categoryKey, "- Invalid data format from API.", data);
-                        }
-                    },
-                    function (errorStatus, errorText) {
-                        _this.empty("Не удалось загрузить каталог. Статус: " + errorStatus);
-                        console.error("HanimeLineComponent:", categoryKey, "- Failed to load catalog.", errorStatus, errorText);
-                    },
-                    false,
-                    { dataType: 'json', timeout: 15000 }
-                );
-             } else {
-                 console.error("HanimeLineComponent:", categoryKey, "- Cannot fetch catalog. Network component, currentCategoryUrl, or network.native missing.");
-                  _this.empty("Не удалось загрузить каталог. Ошибка инициализации сети.");
+             if(!network || typeof network.native !== 'function'){
+                 console.error("HanimeMainScreenComponent: Network component or its native method not available.");
+                  _this.empty("Не удалось загрузить каталоги. Ошибка инициализации сети.");
+                 return;
              }
+
+             // Create a promise for each category fetch
+             const fetchPromises = Object.keys(CATEGORIES).map(key => {
+                 const category = CATEGORIES[key];
+                 const url = API_BASE_URL + category.url;
+                 console.log("HanimeMainScreenComponent: Fetching category:", key, "from", url);
+                 // Wrap the native call in a Promise
+                 return new Promise((resolve, reject) => {
+                     network.native(url,
+                         (data) => { resolve({ key, data }); }, // Resolve with category key and data
+                         (errorStatus, errorText) => {
+                             console.error("HanimeMainScreenComponent: Failed to load category:", key, "Status:", errorStatus, "Error:", errorText);
+                              // Resolve with null data or a specific error structure for this category
+                              // so Promise.all doesn't fail if one category fails.
+                              resolve({ key, error: { status: errorStatus, text: errorText } });
+                         },
+                         false,
+                         { dataType: 'json', timeout: 15000 }
+                     );
+                 });
+             });
+
+             Promise.all(fetchPromises)
+                 .then(results => {
+                      if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
+                     console.log("HanimeMainScreenComponent: All category fetches completed.", results);
+                     _this.build(results);
+                 })
+                 .catch(error => {
+                     // This catch would only be hit if Promise.all itself failed, not individual native calls
+                     // because we are resolving individual promises even on error.
+                      if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
+                     console.error("HanimeMainScreenComponent: Unhandled error in Promise.all during catalog fetch:", error);
+                      _this.empty("Произошла неожиданная ошибка при загрузке каталогов.");
+                 });
         };
 
-        this.build = function (result) {
+        // Builds the screen layout with rows using fetched data
+        this.build = function (results) {
             var _this = this;
-             console.log("HanimeLineComponent:", categoryKey, "- build() - Building UI with", result.length, "items.");
+             console.log("HanimeMainScreenComponent: build() - Processing fetch results.");
 
-             // Horizontal scroll for this line
-             if (!scroll && window.Lampa && typeof Lampa.Scroll === 'function') {
-                  scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, direction: 'horizontal' });
-                  console.log("HanimeLineComponent:", categoryKey, "- Lampa.Scroll initialized (horizontal).");
-             }
-
-             if(scroll && typeof scroll.minus === 'function') scroll.minus(); // Reset scroll position
-             else console.warn("HanimeLineComponent:", categoryKey, "- Scroll or scroll.minus method not available in build(). Cannot scroll to beginning.");
-
-             if (!(itemsContainer && typeof itemsContainer.empty === 'function' && scroll && html && typeof html.find === 'function' && typeof html.append === 'function' && typeof scroll.append === 'function' && typeof scroll.render === 'function')) {
-                  console.error("HanimeLineComponent:", categoryKey, "- Missing critical DOM/Lampa dependencies in build(). Aborting UI build.");
-                   if (parentComponentRef && parentComponentRef.activity && typeof parentComponentRef.activity.loader === 'function') parentComponentRef.activity.loader(false);
+             if (!(html && typeof html.empty === 'function' && typeof html.append === 'function')) {
+                  console.error("HanimeMainScreenComponent: Missing main screen HTML container in build(). Aborting UI build.");
+                   if (_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
                   _this.empty("Не удалось построить интерфейс.");
                   return;
              }
 
-            itemsContainer.empty();
-            // Explicitly destroy previous card objects if any
-            if (items && window.Lampa && Lampa.Arrays && typeof Lampa.Arrays.destroy === 'function') {
-                 Lampa.Arrays.destroy(items);
-            }
-            items = []; // Reset items array
+            html.empty(); // Clear any previous content
+            rows = []; // Reset rows array
 
-            if(itemsContainer && scroll && window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function') {
-                 result.forEach(function (meta) {
-                    // Pass this HanimeLineComponent instance as the componentRef to the HanimeCard
-                    var card = new HanimeCard(meta, _this);
-                    var cardElement = card.render();
+            let allCardsCollection = $(); // To collect all card elements for the global controller
 
-                     itemsContainer.append(cardElement);
-                    items.push(card);
-                });
-                 console.log("HanimeLineComponent:", categoryKey, "- Created and added", items.length, "cards to itemsContainer.");
+            results.forEach(result => {
+                 const categoryKey = result.key;
+                 const categoryData = CATEGORIES[categoryKey];
+                 const fetchedData = result.data;
+                 const fetchError = result.error;
 
-                scroll.append(itemsContainer);
-
-                // Replace the items-line__body content with the scroll element
-                html.find('.items-line__body').empty().append(scroll.render(true));
-
-            } else {
-                console.error("HanimeLineComponent:", categoryKey, "- Missing required objects or methods before building cards in build().");
-                if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
-                     Lampa.Noty.show('Ошибка плагина при создании карточек.', 5000);
-                  }
-            }
-
-            // Notify the parent that this line is ready/loaded
-            if(parentComponentRef && typeof parentComponentRef.lineLoaded === 'function') {
-                 parentComponentRef.lineLoaded(categoryKey, this.getCardsElements());
-            } else {
-                 console.warn("HanimeLineComponent:", categoryKey, "- Parent component or lineLoaded method not available to notify.");
-                 // If parent notification fails, try to hide loader directly (less ideal)
-                 if (parentComponentRef && parentComponentRef.activity && typeof parentComponentRef.activity.loader === 'function') parentComponentRef.activity.loader(false);
-                  // If parent notification fails, we can't accurately know when *all* lines are ready to toggle activity.
-                  // The parent component is responsible for the overall activity toggle.
-            }
-
-             console.log("HanimeLineComponent:", categoryKey, "- Build process completed.");
-        };
-
-         // Delegate card click up to the parent screen component
-         this.onCardClick = function(cardData) {
-             console.log("HanimeLineComponent:", categoryKey, "- Card click delegated to parent:", cardData.title);
-             if(typeof cardClickHandler === 'function') {
-                 cardClickHandler(cardData);
-             } else {
-                  console.warn("HanimeLineComponent:", categoryKey, "- Card click handler not provided by parent.");
-             }
-         };
-
-         // Delegate context menu request up to the parent screen component
-         this.showCardContextMenu = function(cardElement, cardData) {
-             console.log("HanimeLineComponent:", categoryKey, "- Show context menu delegated to parent for", cardData.title);
-             if(typeof cardContextMenuHandler === 'function') {
-                 cardContextMenuHandler(cardElement, cardData);
-             } else {
-                  console.warn("HanimeLineComponent:", categoryKey, "- Context menu handler not provided by parent.");
-             }
-         };
-
-
-        this.updateScrollToFocus = function(element) {
-             // Update this line's horizontal scroll
-             if (scroll && typeof scroll.update === 'function' && element && typeof element.length === 'number' && element.length > 0) {
-                lastFocusedCardElement = element[0]; // Save last focused element *within this line*
-                scroll.update(element, true);
-                console.log("HanimeLineComponent:", categoryKey, "- Horizontal scroll updated to focused element.");
-            } else {
-                console.warn("HanimeLineComponent:", categoryKey, "- Scroll instance or update method, or valid element missing to scroll.");
-            }
-            // No need to notify parent for vertical scroll here, Controller handles vertical movement between lines
-        }
-
-        this.empty = function (msg) {
-             console.log("HanimeLineComponent:", categoryKey, "- empty() - Displaying message:", msg);
-             // Note: Displaying an empty state for a single line within a screen might look odd.
-             // This might need refinement depending on UI requirements.
-             // For now, it replaces the cards body with the message.
-             if (window.Lampa && Lampa.Empty && typeof Lampa.Empty === 'function' && typeof Lampa.Empty.prototype.render === 'function') {
-                 var empty = new Lampa.Empty({ message: msg });
-                 // Append the empty element directly into the items-line body instead of the scroll
-                 if(html && typeof html.find === 'function') {
-                     html.find('.items-line__body').empty().append(empty.render(true));
-                     console.log("HanimeLineComponent:", categoryKey, "- Displaying empty state via Lampa.Empty.");
-                     // Lampa.Empty component might have its own start/stop/destroy methods.
-                     // We might need to manage these instances. For now, just rendering.
-                 } else {
-                     console.warn("HanimeLineComponent:", categoryKey, "- Html container or its methods missing to show empty state.");
+                 if (fetchError) {
+                     console.warn("HanimeMainScreenComponent: Skipping row for category", categoryKey, "due to fetch error:", fetchError);
+                     // Optionally, add a row placeholder indicating the error
+                     // html.append($(`<div class="items-line"><div class="items-line__head"><div class="items-line__title">${categoryData.title}</div></div><div class="items-line__body">Ошибка загрузки: ${fetchError.status}</div></div>`));
+                     return; // Skip this category
                  }
 
+                 if (fetchedData && fetchedData.metas && Array.isArray(fetchedData.metas) && fetchedData.metas.length > 0) {
+                    // Create a HanimeRow instance for this category
+                    var row = new HanimeRow(categoryKey, categoryData.title, fetchedData.metas, _this);
+                    rows.push(row);
+
+                    // Append the row's DOM element to the main screen HTML
+                    html.append($(row.render()));
+
+                    // Add the selectable cards from this row to the main collection
+                    allCardsCollection = allCardsCollection.add(row.getSelectableElements());
+
+                 } else {
+                      console.log("HanimeMainScreenComponent: No items or invalid data for category:", categoryKey);
+                      // Optionally, add an empty row or message
+                      // html.append($(`<div class="items-line"><div class="items-line__head"><div class="items-line__title">${categoryData.title}</div></div><div class="items-line__body">Нет элементов в этой категории.</div></div>`));
+                 }
+            });
+
+             if (rows.length === 0) {
+                _this.empty("Не удалось загрузить ни один каталог или они пусты.");
+                 console.log("HanimeMainScreenComponent: No rows built.");
              } else {
-                  console.warn("HanimeLineComponent:", categoryKey, "- Lampa.Empty component not available. Using basic text fallback.");
-                  if(html && typeof html.find === 'function') {
-                      html.find('.items-line__body').empty().text(msg + ' (Компонент Empty недоступен в Lampa)');
-                  }
+                 console.log("HanimeMainScreenComponent: Built", rows.length, "rows.");
+                  console.log("HanimeMainScreenComponent: Total selectable cards:", allCardsCollection.length);
+
+                 // Store the complete collection of selectable cards for the controller
+                 this.$allCards = allCardsCollection;
              }
 
-             // Notify parent even if empty
-             if(parentComponentRef && typeof parentComponentRef.lineLoaded === 'function') {
-                 parentComponentRef.lineLoaded(categoryKey, []); // Pass empty array of cards
-             } else {
-                  console.warn("HanimeLineComponent:", categoryKey, "- Parent component or lineLoaded method not available to notify (empty).");
-                  if (parentComponentRef && parentComponentRef.activity && typeof parentComponentRef.activity.loader === 'function') parentComponentRef.activity.loader(false);
-             }
-             console.log("HanimeLineComponent:", categoryKey, "- empty() finished.");
+
+             if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
+             if(_this.activity && typeof _this.activity.toggle === 'function') _this.activity.toggle();
+             console.log("HanimeMainScreenComponent: Build process completed and activity toggled.");
         };
 
-        this.create = function () {
-            console.log("HanimeLineComponent:", categoryKey, "- create()");
-             // Scroll and network are initialized here or in fetchCatalog if null
-              if (!network && window.Lampa && typeof Lampa.Reguest === 'function') { network = new Lampa.Reguest(); }
-              if (!scroll && window.Lampa && typeof Lampa.Scroll === 'function') {
-                  scroll = new Lampa.Scroll({ mask: true, over: true, step: 250, direction: 'horizontal' });
+         // Helper to find row and item index for a given card element
+         this.findCardPosition = function(element) {
+             if (!element || !element.jquery) element = $(element); // Ensure it's a jQuery object
+
+              for(let i = 0; i < rows.length; i++) {
+                  const row = rows[i];
+                   const itemIndex = row.getSelectableElements().index(element);
+                  if (itemIndex !== -1) {
+                      return { rowIndex: i, itemIndex: itemIndex, element: element, row: row };
+                  }
               }
-
-            this.buildLayout();
-            this.fetchCatalog();
-             console.log("HanimeLineComponent:", categoryKey, "- create() finished. Fetching catalog initiated.");
-        };
-
-         // This start method is mainly for internal state/setup of the line, not the main Lampa Controller
-         // The main controller is managed by the parent HanimeCatalogScreen
-        this.start = function () {
-             console.log("HanimeLineComponent:", categoryKey, "- start() called. This component doesn't manage the main Controller.");
-             // No need to toggle main controller here.
-             // The parent screen component handles the main 'content' controller and focuses the collection.
-             // When the parent focuses on an element within this line, the HanimeCard's hover:focus will trigger updateScrollToFocus.
-        };
-
-        this.pause = function () {
-             console.log("HanimeLineComponent:", categoryKey, "- pause() called.");
-             // No specific pause logic needed within the line component itself, as Controller is managed by parent.
-             // Last focused element within the line is tracked by lastFocusedCardElement.
-        };
-
-        this.stop = function () {
-             console.log("HanimeLineComponent:", categoryKey, "- stop() called.");
-        };
-
-        this.render = function () {
-            // Returns the main DOM element for this line
-            if (!html) {
-                 this.buildLayout();
-            }
-            return html;
-        };
-
-         // Returns an array of the actual DOM card elements for the parent to use in the Controller collection
-         this.getCardsElements = function() {
-             if (itemsContainer) {
-                 return itemsContainer.find('.card').toArray();
-             }
-             return [];
-         };
-
-         // Method to give focus to the first card in this line, called by the parent
-         this.focus = function() {
-             if (itemsContainer) {
-                  let firstCard = itemsContainer.find('.card').first();
-                  if (firstCard.length) {
-                       // Use Lampa.Controller.focus if available, otherwise trigger hover:focus manually
-                       if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.focus === 'function') {
-                           Lampa.Controller.focus(firstCard[0]); // Focus the native DOM element
-                       } else {
-                           firstCard.trigger('hover:focus'); // Manual trigger
-                           console.warn("HanimeLineComponent:", categoryKey, "- Lampa.Controller.focus not available, triggering hover:focus manually.");
-                       }
-                       lastFocusedCardElement = firstCard[0]; // Update last focused
-                       console.log("HanimeLineComponent:", categoryKey, "- Focused first card.");
-                       return true; // Successfully focused
-                  }
-             }
-              console.log("HanimeLineComponent:", categoryKey, "- No cards to focus.");
-              return false; // Failed to focus
+              console.warn("HanimeMainScreenComponent: Could not find position for element:", element);
+              return { rowIndex: -1, itemIndex: -1, element: element, row: null }; // Not found
          }
 
-         // Method to get the last focused element in this line, used by the parent
-         this.getLastFocused = function() {
-             return lastFocusedCardElement;
-         }
-
-
-        this.destroy = function () {
-            console.log("HanimeLineComponent:", categoryKey, "- destroy() called.");
-            if(network && typeof network.clear === 'function') network.clear(); network = null;
-
-             // Destroy card instances explicitly
-             if (items && window.Lampa && Lampa.Arrays && typeof Lampa.Arrays.destroy === 'function') {
-                 Lampa.Arrays.destroy(items);
-                 console.log("HanimeLineComponent:", categoryKey, "- Destroyed items array.");
-             }
-            items = null;
-
-             // Destroy horizontal scroll instance
-             if (scroll && typeof scroll.destroy === 'function') {
-                 scroll.destroy();
-                 console.log("HanimeLineComponent:", categoryKey, "- Destroyed scroll instance.");
-             }
-             scroll = null;
-
-             // Remove main DOM element
-             if (html && typeof html.remove === 'function') {
-                 html.remove();
-                 console.log("HanimeLineComponent:", categoryKey, "- Removed html element from DOM.");
-             }
-            html = null; itemsContainer = null; lastFocusedCardElement = null;
-
-            console.log("HanimeLineComponent:", categoryKey, "- destroy() finished.");
-        };
-    }
-
-
-    // HanimeCatalogScreen - Represents the main screen containing multiple category lines
-    function HanimeCatalogScreen(componentObject) {
-         var _this = this; // Keep reference to the screen component instance
-
-         var verticalScroll = null; // Vertical scroll for the main screen
-         var mainHtml = null; // Main container element for the screen
-
-         // Array to hold instances of HanimeLineComponent
-         var lineComponents = [];
-         // Map to store line components by category key for easy access
-         var lineComponentsMap = {};
-
-         var allCardsCollection = []; // Array to hold all card DOM elements for the main Controller collection
-         var lastFocusedElement = null; // Last focused DOM element on the entire screen
-
-         // Track how many lines are expected vs how many have loaded/failed
-         var expectedLines = Object.keys(CATEGORIES).length;
-         var loadedLinesCount = 0;
-         var loadingIndicator = (componentObject && componentObject.activity && typeof componentObject.activity.loader === 'function') ? componentObject.activity.loader : null;
-         var activityToggler = (componentObject && componentObject.activity && typeof componentObject.activity.toggle === 'function') ? componentObject.activity.toggle : null;
-
-
-        this.buildLayout = function() {
-            mainHtml = $(`
-                <div class="hanime-catalog-screen layer--visible layer--render">
-                    <!-- Vertical scroll will go here -->
-                </div>
-            `);
-
-            // Initialize the main vertical scroll
-            if (!verticalScroll && window.Lampa && typeof Lampa.Scroll === 'function') {
-                 verticalScroll = new Lampa.Scroll({ mask: true, over: true, step: 250, direction: 'vertical' });
-                 console.log("HanimeCatalogScreen: Lampa.Scroll initialized (vertical).");
-                 mainHtml.append(verticalScroll.render(true)); // Add vertical scroll DOM to main html
-            } else {
-                 console.error("HanimeCatalogScreen: Lampa.Scroll component missing. Cannot build vertical scroll layout.");
-                 if (loadingIndicator) loadingIndicator(false);
-                 // Fallback: Show a basic message or empty state if scrolling is impossible
-                 if (window.Lampa && Lampa.Empty && typeof Lampa.Empty === 'function') {
-                     let empty = new Lampa.Empty({ message: "Не удалось создать компонент прокрутки. Обновите Lampa." });
-                     mainHtml.empty().append(empty.render(true));
-                     this.start = empty.start; // Use Empty's start method for basic navigation
-                 } else {
-                      mainHtml.empty().text("Не удалось создать компонент прокрутки.");
-                       this.start = function() { // Basic fallback start
-                            if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.add === 'function' && typeof Lampa.Controller.toggle === 'function') {
-                                Lampa.Controller.add('content', { back: this.back });
-                                Lampa.Controller.toggle('content');
-                            }
-                       }.bind(this);
-                 }
-            }
-        };
-
-         // Callback from HanimeLineComponent when it finishes loading/building
-         this.lineLoaded = function(categoryKey, cardElements) {
-             console.log("HanimeCatalogScreen: Line '" + categoryKey + "' loaded with", cardElements.length, "cards.");
-
-             // Add cards from this line to the main collection for the Controller
-             allCardsCollection = allCardsCollection.concat(cardElements);
-
-             loadedLinesCount++;
-
-             console.log("HanimeCatalogScreen: Loaded lines count:", loadedLinesCount, "/", expectedLines);
-
-             // If all expected lines have loaded (or failed to load with empty result)
-             if (loadedLinesCount >= expectedLines) {
-                 console.log("HanimeCatalogScreen: All lines processed. Final card count for Controller:", allCardsCollection.length);
-                  if (loadingIndicator) loadingIndicator(false); // Hide loader
-
-                 // Toggle activity to setup Controller with the final collection
-                 if (activityToggler) {
-                     // Need a small delay here sometimes to ensure DOM is fully ready after appends
-                      setTimeout(() => {
-                         console.log("HanimeCatalogScreen: Delay finished, toggling activity.");
-                         activityToggler();
-                      }, 100); // Small delay
-
-                 } else {
-                      console.warn("HanimeCatalogScreen: Activity toggler not available.");
-                 }
-             }
-         };
-
-         // Method to handle card clicks, delegated from HanimeCard -> HanimeLineComponent -> HanimeCatalogScreen
+        // Handler for card click (Enter press)
          this.onCardClick = function(cardData) {
-             console.log("HanimeCatalogScreen: Received card click for:", cardData.title, ". Fetching stream/meta...");
-             this.fetchStreamAndMeta(cardData.id, cardData);
-         };
+             console.log("HanimeMainScreenComponent: Card clicked:", cardData.title, "(ID:", cardData.id, ")");
+             // Fetch stream and meta using the card data
+            this.fetchStreamAndMeta(cardData.id, cardData);
+         }
 
-          // Method to handle context menu requests, delegated from HanimeCard -> HanimeLineComponent -> HanimeCatalogScreen
+         // Handler for card long press
          this.showCardContextMenu = function(cardElement, cardData) {
-             console.log("HanimeCatalogScreen: Received context menu request for:", cardData.title, ". Showing menu...");
-             var _this = this; // Reference to HanimeCatalogScreen
+             console.log("HanimeMainScreenComponent: showCardContextMenu for", cardData.title);
+             var _this = this;
 
              var enabled = (window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : null;
+
+             // Ensure cardData is the processed data stored on the element
+             const dataFromElement = $(cardElement).data('cardData');
+             if (!dataFromElement) {
+                  console.error("HanimeMainScreenComponent: No cardData found on element for context menu.");
+                  if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
+                     Lampa.Noty.show('Ошибка данных карточки.', 5000);
+                  }
+                  return;
+             }
+             cardData = dataFromElement; // Use data from element
 
              var status = (window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.check === 'function') ? Lampa.Favorite.check(cardData) : {};
 
              var menu_favorite = [];
              if(window.Lampa && Lampa.Lang && typeof Lampa.Lang.translate === 'function') {
                  menu_favorite = [
-                     { title: Lampa.Lang.translate('title_book'), where: 'book', checkbox: true, checked: status.book },
-                     { title: Lampa.Lang.translate('title_like'), where: 'like', checkbox: true, checked: status.like },
-                     { title: Lampa.Lang.translate('title_wath'), where: 'wath', checkbox: true, checked: status.wath },
-                     { title: Lampa.Lang.translate('menu_history'), where: 'history', checkbox: true, checked: status.history },
+                     { title: Lampa.Lang.translate('title_book'), where: 'book', checkbox: true, checked: status.book, collect: true }, // Added collect: true
+                     { title: Lampa.Lang.translate('title_like'), where: 'like', checkbox: true, checked: status.like, collect: true }, // Added collect: true
+                     { title: Lampa.Lang.translate('title_wath'), where: 'wath', checkbox: true, checked: status.wath, collect: true }, // Added collect: true
+                     { title: Lampa.Lang.translate('menu_history'), where: 'history', checkbox: true, checked: status.history, collect: true }, // Added collect: true
                      { title: Lampa.Lang.translate('settings_cub_status'), separator: true }
                  ];
+                 // Add status items if they exist in Lampa.Lang
+                 const marks = ['look', 'viewed', 'scheduled', 'continued', 'thrown'];
+                 marks.forEach(mark => {
+                      if (Lampa.Lang.translate('title_' + mark) !== 'title_' + mark) { // Check if translation exists
+                          menu_favorite.push({
+                              title: Lampa.Lang.translate('title_' + mark),
+                              where: mark,
+                              checkbox: true, // Checkbox for status
+                              checked: status[mark],
+                              collect: true // Collect status changes
+                          });
+                      }
+                 });
+
              } else {
-                 console.warn("HanimeCatalogScreen: Lampa.Lang not available, using English for menu items.");
+                 console.warn("HanimeMainScreenComponent: Lampa.Lang not available, using English for menu items.");
                  menu_favorite = [
-                      { title: 'Planned', where: 'book', checkbox: true, checked: status.book },
-                     { title: 'Liked', where: 'like', checkbox: true, checked: status.like },
-                     { title: 'Watching', where: 'wath', checkbox: true, checked: status.wath },
-                     { title: 'History', where: 'history', checkbox: true, checked: status.history },
-                     { title: 'Status', separator: true }
+                      { title: 'Planned', where: 'book', checkbox: true, checked: status.book, collect: true },
+                     { title: 'Liked', where: 'like', checkbox: true, checked: status.like, collect: true },
+                     { title: 'Watching', where: 'wath', checkbox: true, checked: status.wath, collect: true },
+                     { title: 'History', where: 'history', checkbox: true, checked: status.history, collect: true },
+                     { title: 'Status', separator: true },
+                     { title: 'Looked', where: 'look', checkbox: true, checked: status.look, collect: true },
+                     { title: 'Viewed', where: 'viewed', checkbox: true, checked: status.viewed, collect: true },
+                     { title: 'Scheduled', where: 'scheduled', checkbox: true, checked: status.scheduled, collect: true },
+                     { title: 'Continued', where: 'continued', checkbox: true, checked: status.continued, collect: true },
+                     { title: 'Thrown', where: 'thrown', checkbox: true, checked: status.thrown, collect: true }
                  ];
              }
+
 
              if (window.Lampa && Lampa.Select && typeof Lampa.Select.show === 'function') {
                  Lampa.Select.show({
                      title: (window.Lampa && Lampa.Lang && typeof Lampa.Lang.translate === 'function') ? Lampa.Lang.translate('title_action') : 'Action',
                      items: menu_favorite,
                      onBack: ()=>{
-                         // Restore controller focus back to the screen after menu is closed
                          if (window.Lampa && Lampa.Controller && enabled) Lampa.Controller.toggle(enabled);
-                          console.log("HanimeCatalogScreen: Context menu back button pressed. Restored controller:", enabled);
+                          console.log("HanimeMainScreenComponent: Context menu back button pressed. Restored controller:", enabled);
                      },
+                      // onCheck is called when a checkbox changes state
                      onCheck: (a)=>{
-                         console.log("HanimeCatalogScreen: Context menu - checkbox checked:", a.where);
+                         console.log("HanimeMainScreenComponent: Context menu - checkbox toggled:", a.where, "Checked:", a.checked);
                          if(window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(a.where, cardData);
-                         // Find the specific Card instance and update its icons
-                         // Need to iterate through all line components and their cards
-                         let cardObj = null;
-                         for (const lineComp of lineComponents) {
-                             if (lineComp && lineComp.items) { // Check if items array exists and is populated
-                                 cardObj = lineComp.items.find(item => item && typeof item.render === 'function' && item.render(true) === cardElement[0]);
-                                 if (cardObj) break; // Found the card instance
-                             }
-                         }
 
-                          if(cardObj && typeof cardObj.updateFavoriteIcons === 'function') cardObj.updateFavoriteIcons();
-                         else console.warn("HanimeCatalogScreen: Failed to find Card object to update icons after onCheck.");
+                         // Find the card instance and update its icons
+                         const cardInstance = $(cardElement).data('cardInstance');
+                          if(cardInstance && typeof cardInstance.update === 'function') cardInstance.update();
+                         else console.warn("HanimeMainScreenComponent: Failed to find Card object to update icons after onCheck.");
                      },
+                      // onSelect is called when an item is selected (relevant for non-checkbox items, or if checkbox logic is complex)
+                      // For simple toggles, onCheck is often sufficient. We use collect: true with onCheck.
                      onSelect: (a)=>{
-                          console.log("HanimeCatalogScreen: Context menu - item selected:", a);
-                          if(a.collect && window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function'){
-                               Lampa.Favorite.toggle(a.where, cardData);
-                               // Update icons similarly to onCheck
-                               let cardObj = null;
-                               for (const lineComp of lineComponents) {
-                                   if (lineComp && lineComp.items) {
-                                       cardObj = lineComp.items.find(item => item && typeof item.render === 'function' && item.render(true) === cardElement[0]);
-                                       if (cardObj) break;
-                                   }
-                               }
-                               if(cardObj && typeof cardObj.updateFavoriteIcons === 'function') cardObj.updateFavoriteIcons();
-                                else console.warn("HanimeCatalogScreen: Failed to find Card object to update icons after onSelect.");
-                          }
-                          if(window.Lampa && Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
-                           // Restore controller focus back to the screen after menu is closed
+                         // This part is mainly for items without `collect: true` or custom logic
+                          console.log("HanimeMainScreenComponent: Context menu - item selected:", a);
+                           // Close the selectbox and restore controller
+                           if(window.Lampa && Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
                            if (window.Lampa && Lampa.Controller && enabled) Lampa.Controller.toggle(enabled);
-                            console.log("HanimeCatalogScreen: Context menu selected and closed.");
+                            console.log("HanimeMainScreenComponent: Context menu selected and closed.");
                      },
                       onDraw: (item, elem) => {
+                           // Custom drawing logic, e.g., for premium features lock icon
                            if (elem.collect && window.Lampa && Lampa.Account && typeof Lampa.Account.hasPremium === 'function' && !Lampa.Account.hasPremium()) {
-                                // Add lock icon if premium is required and user doesn't have it
                                 let lockIconTemplate = (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function' && Lampa.Template.has('icon_lock')) ? Lampa.Template.get('icon_lock') : null;
                                 if (lockIconTemplate && window.$ && typeof item.find === 'function' && typeof item.append === 'function') {
                                      let wrap = $('<div class="selectbox-item__lock"></div>');
                                      wrap.append($(lockIconTemplate));
-                                     item.find('.selectbox-item__checkbox').remove(); // Remove checkbox for premium item
+                                     item.find('.selectbox-item__checkbox').remove(); // Remove default checkbox for premium items
                                      item.append(wrap);
 
-                                     // Override hover:enter to show premium message
+                                     // Modify hover:enter behavior for premium items
                                      item.off('hover:enter').on('hover:enter', () => {
                                          if(window.Lampa && Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
                                           if (window.Lampa && Lampa.Account && typeof Lampa.Account.showCubPremium === 'function') Lampa.Account.showCubPremium();
                                      });
                                 } else {
-                                     console.warn("HanimeCatalogScreen: icon_lock template or Template/jQuery/methods missing for Premium item draw.");
+                                     console.warn("HanimeMainScreenComponent: icon_lock template or Template/jQuery/methods missing for Premium item draw.");
                                 }
                            }
                       }
                  });
              } else {
-                 console.warn("HanimeCatalogScreen: Lampa.Select component not available to show context menu.");
+                 console.warn("HanimeMainScreenComponent: Lampa.Select component not available to show context menu.");
                  if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
                      Lampa.Noty.show('Компонент меню недоступен.', 5000);
                  }
              }
          };
 
-        // Method to fetch stream and meta data, called after card click
+
+        // Fetches stream and meta data for playback
         this.fetchStreamAndMeta = function (id, meta) {
-             // Use the global network definition
-             if (!window.Lampa || typeof Lampa.Reguest !== 'function') {
-                 console.error("HanimeCatalogScreen: Lampa.Reguest component not available.");
-                  if (loadingIndicator) loadingIndicator(false);
-                 if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Сетевой компонент недоступен для загрузки потока.', 5000);
-                return;
-             }
-
-             var network = new Lampa.Reguest(); // Create a new network instance for this specific request
-
-             if (loadingIndicator) loadingIndicator(true);
-            console.log("HanimeCatalogScreen: fetchStreamAndMeta for ID:", id);
-
+             var _this = this;
             var streamUrl = STREAM_URL_TEMPLATE.replace('{id}', id);
             var metaUrl = META_URL_TEMPLATE.replace('{id}', id);
 
+             if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(true);
+             else console.warn("HanimeMainScreenComponent: Activity loader not available in fetchStreamAndMeta.");
+
+            console.log("HanimeMainScreenComponent: fetchStreamAndMeta for ID:", id);
+
+            if (!network || typeof network.native !== 'function') {
+                console.error("HanimeMainScreenComponent: Network component or its native method not available.");
+                 if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
+                 if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Сетевой компонент недоступен для загрузки потока.', 5000);
+                return;
+            }
+
+            // Use Promise.all to fetch stream and meta in parallel
             Promise.all([
                 new Promise((resolve, reject) => {
-                    if(streamUrl) network.native(streamUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
-                    else reject('Stream URL unavailable');
+                    if(streamUrl && network) network.native(streamUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
+                    else reject('Stream URL or Network unavailable');
                 }),
-                // If we already have meta, use it. Otherwise fetch it.
+                // If we already have sufficient meta data from the list, use it. Otherwise, fetch.
+                // The `meta` argument is the data from the list, which might be incomplete.
+                // The API provides a full meta endpoint if needed.
+                // For this API, the list meta seems sufficient, so we can often skip the metaUrl call.
+                // Let's assume the meta provided in the list is sufficient for player info and history.
+                // If you need full details (like plot, genres, etc.), you might need to fetch metaUrl here.
+                // For now, relying on the list meta.
                 meta ? Promise.resolve({ meta: meta }) : new Promise((resolve, reject) => {
-                     if(metaUrl) network.native(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
-                     else reject('Meta URL unavailable');
+                     // Fallback to fetching full meta if list meta is missing (shouldn't happen with this API)
+                     if(metaUrl && network) network(metaUrl, resolve, reject, false, { dataType: 'json', timeout: 10000 });
+                     else reject('Meta URL or Network unavailable for fallback');
                  })
             ]).then(([streamData, metaDataResponse]) => {
-                 if (loadingIndicator) loadingIndicator(false);
-                 // Dispose of the network instance after the request
-                 if(network && typeof network.clear === 'function') network.clear();
+                 if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
 
-                const fullMetaData = metaDataResponse ? (metaDataResponse.meta || metaDataResponse) : null;
-                console.log("HanimeCatalogScreen: Stream data received:", streamData);
-                console.log("HanimeCatalogScreen: Full Meta Data received:", fullMetaData);
+                // Use the meta data provided initially if available, otherwise the fetched one
+                const fullMetaData = meta || (metaDataResponse ? (metaDataResponse.meta || metaDataResponse) : null);
+                console.log("HanimeMainScreenComponent: Stream data received:", streamData);
+                console.log("HanimeMainScreenComponent: Meta Data (used for player/history):", fullMetaData);
 
                 if (streamData && streamData.streams && Array.isArray(streamData.streams) && streamData.streams.length > 0) {
-                    var streamToPlay = streamData.streams[0];
+                    var streamToPlay = streamData.streams[0]; // Assuming the first stream is the primary one
                     var finalStreamUrl = streamToPlay ? streamToPlay.url : null;
 
                     if(finalStreamUrl) {
                          try {
-                             // Apply proxy if needed
+                             // Check if the stream URL requires proxying
+                             // This is based on the specific API and potential geo-restrictions
                              var url = new URL(finalStreamUrl);
                              if (url.hostname && url.hostname.includes('highwinds-cdn.com') && PROXY_BASE_URL) {
                                  finalStreamUrl = `${PROXY_BASE_URL}/proxy?url=${encodeURIComponent(finalStreamUrl)}`;
-                                 console.log("HanimeCatalogScreen: Stream URL proxied.");
+                                 console.log("HanimeMainScreenComponent: Stream URL proxied.");
                              } else {
-                                console.log("HanimeCatalogScreen: Stream URL does not require proxy:", finalStreamUrl);
+                                console.log("HanimeMainScreenComponent: Stream URL does not require proxy:", finalStreamUrl);
                              }
                          } catch (e) {
-                            console.error("HanimeCatalogScreen: Failed to parse or proxy stream URL:", e);
-                             console.log("HanimeCatalogScreen: Using original stream URL due to error:", finalStreamUrl);
+                            console.error("HanimeMainScreenComponent: Failed to parse or proxy stream URL:", e);
+                             console.log("HanimeMainScreenComponent: Using original stream URL due to error:", finalStreamUrl);
                          }
                     }
 
+                    // Prepare the player object
                     var playerObject = {
                         title: fullMetaData ? (fullMetaData.name || fullMetaData.title || 'Без названия') : 'Без названия',
                         url: finalStreamUrl,
@@ -806,40 +728,47 @@
                     };
 
                     if (playerObject.url && window.Lampa && Lampa.Player && typeof Lampa.Player.play === 'function' && typeof Lampa.Player.playlist === 'function') {
-                         console.log("HanimeCatalogScreen: Launching player.");
+                         console.log("HanimeMainScreenComponent: Launching player.");
                          Lampa.Player.play(playerObject);
-                         Lampa.Player.playlist([playerObject]);
+                         Lampa.Player.playlist([playerObject]); // Player might need a playlist array
 
+                         // Add item to history (using the meta data)
                          if (fullMetaData && window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.add === 'function') {
+                                // Structure the history meta data appropriately
                                 const historyMeta = {
-                                    id: fullMetaData.id || '', title: fullMetaData.name || fullMetaData.title || '', poster: fullMetaData.poster || fullMetaData.background || '',
-                                    runtime: fullMetaData.runtime, year: fullMetaData.year, original_name: fullMetaData.original_name || ''
+                                    id: fullMetaData.id || '', // Required
+                                     title: fullMetaData.name || fullMetaData.title || '', // Required
+                                     poster: fullMetaData.poster || fullMetaData.background || '',
+                                    runtime: fullMetaData.runtime, // If available
+                                     year: fullMetaData.year || (fullMetaData.release_date ? fullMetaData.release_date.slice(0,4) : ''), // If available
+                                    original_name: fullMetaData.original_name || '',
+                                    // Add other fields Lampa's history/favorite might use if available in fullMetaData
+                                     type: fullMetaData.type || (fullMetaData.first_air_date ? 'tv' : 'movie') // Important for history/favorite checks
                                 };
-                                Lampa.Favorite.add('history', historyMeta, 100); // Add to history with progress 100 (watched)
-                                console.log("HanimeCatalogScreen: Added to history.");
+                                Lampa.Favorite.add('history', historyMeta, 100); // Add to history, percentage watched 100 (start)
+                                console.log("HanimeMainScreenComponent: Added to history.", historyMeta);
                          } else {
-                              console.warn("HanimeCatalogScreen: Lampa.Favorite or add method not available to add to history.");
+                              console.warn("HanimeMainScreenComponent: Lampa.Favorite or add method not available to add to history.");
                          }
 
                     } else {
-                         console.error("HanimeCatalogScreen: Cannot launch player. Missing stream URL, Lampa.Player, or methods.");
+                         console.error("HanimeMainScreenComponent: Cannot launch player. Missing stream URL, Lampa.Player, or methods.");
                          if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
                              Lampa.Noty.show(playerObject.url ? 'Компонент плеера недоступен.' : 'Не удалось получить ссылку на поток.', 5000);
                          }
                     }
 
                 } else {
-                     console.warn("HanimeCatalogScreen: No streams found in API data or invalid structure.");
+                     console.warn("HanimeMainScreenComponent: No streams found in API data or invalid structure for ID:", id);
                      if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
                          Lampa.Noty.show('Потоки не найдены для этого аниме.', 5000);
                      }
                 }
 
             }).catch(error => {
-                if (loadingIndicator) loadingIndicator(false);
-                 // Dispose of the network instance after the request
-                 if(network && typeof network.clear === 'function') network.clear();
-                console.error("HanimeCatalogScreen: Error fetching stream/meta details:", error);
+                 // This catch would only be hit if the Promises themselves failed (e.g., network error before native call)
+                if(_this.activity && typeof _this.activity.loader === 'function') _this.activity.loader(false);
+                console.error("HanimeMainScreenComponent: Error fetching stream/meta details:", error);
                  if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
                      Lampa.Noty.show('Ошибка загрузки деталей: ' + (typeof error === 'string' ? error : error.message || 'Неизвестная ошибка'), 5000);
                  }
@@ -847,251 +776,291 @@
         };
 
 
+        // Displays an empty state message
+        this.empty = function (msg) {
+             console.log("HanimeMainScreenComponent: empty() - Displaying message:", msg);
+             if (window.Lampa && Lampa.Empty && typeof Lampa.Empty === 'function' && typeof Lampa.Empty.prototype.render === 'function') {
+                 var empty = new Lampa.Empty({ message: msg });
+                 if(html && typeof html.empty === 'function' && typeof html.append === 'function') html.empty().append(empty.render(true));
+                 else console.warn("HanimeMainScreenComponent: Main HTML container not available or its methods missing to show empty state.");
+
+                 if(this.activity && typeof this.activity.loader === 'function') this.activity.loader(false);
+                 if(this.activity && typeof this.activity.toggle === 'function') this.activity.toggle();
+                 // Assign the start method from Lampa.Empty to allow navigation out
+                 if (typeof empty.start === 'function') this.start = empty.start;
+                 else console.warn("HanimeMainScreenComponent: Empty component does not have a start method.");
+
+                  console.log("HanimeMainScreenComponent: Displaying empty state via Lampa.Empty.");
+             } else {
+                  console.warn("HanimeMainScreenComponent: Lampa.Empty component not available. Using basic text fallback.");
+                  if(html && typeof html.empty === 'function' && typeof html.text === 'function') html.empty().text(msg + ' (Компонент Empty недоступен в Lampa)');
+                 if(this.activity && typeof this.activity.loader === 'function') this.activity.loader(false);
+                 if(this.activity && typeof this.activity.toggle === 'function') this.activity.toggle();
+                   // Fallback start method if Lampa.Empty is not available
+                   this.start = function() {
+                        console.log("HanimeMainScreenComponent: Fallback start() for empty state. Setting minimal Controller.");
+                       if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.add === 'function' && typeof Lampa.Controller.toggle === 'function') {
+                            // Add a basic controller just for the back button
+                            Lampa.Controller.add('content', { back: this.back });
+                            Lampa.Controller.toggle('content');
+                       } else console.warn("HanimeMainScreenComponent: Lampa.Controller not available for fallback start method.");
+                   }.bind(this);
+             }
+        };
+
+
+        // Creates the component's initial structure and starts data fetching
         this.create = function () {
-            console.log("HanimeCatalogScreen: create()");
+            console.log("HanimeMainScreenComponent: create()");
+             if (!network && window.Lampa && typeof Lampa.Reguest === 'function') {
+                  network = new Lampa.Reguest();
+                  console.log("HanimeMainScreenComponent: Lampa.Reguest initialized in create().");
+              } else if (!network) console.warn("HanimeMainScreenComponent: Network not initialized in create(), Lampa.Reguest missing.");
 
-            this.buildLayout();
+            this.buildLayout(); // Build the main screen container HTML
+             if(this.activity && typeof this.activity.loader === 'function') this.activity.loader(true);
+            this.fetchCatalogs(); // Fetch data for all rows
+             console.log("HanimeMainScreenComponent: create() finished. Fetching catalogs initiated.");
+        };
 
-            // If vertical scroll failed to initialize, stop here (empty state will be shown)
-             if (!verticalScroll || !mainHtml || typeof verticalScroll.append !== 'function') {
-                 console.error("HanimeCatalogScreen: Vertical scroll not initialized. Aborting line component creation.");
-                 // The empty state handling in buildLayout should have set up the basic start method.
+        // Called when the component becomes the active screen
+        this.start = function () {
+            console.log("HanimeMainScreenComponent: start()");
+            // Check if this activity is the currently active one before setting up the controller
+             if (window.Lampa && Lampa.Activity && typeof Lampa.Activity.active === 'function' && Lampa.Activity.active().activity !== this.activity) {
+                console.log("HanimeMainScreenComponent: start() - Not the currently active activity, skipping controller setup.");
+                return;
+            }
+
+             if (rows.length === 0 || !this.$allCards || this.$allCards.length === 0) {
+                  console.log("HanimeMainScreenComponent: No rows or cards to display. Start will rely on empty state setup.");
+                 // If empty state was already set up by build/empty, its start method will be called
+                 if (typeof this.start === 'function' && this.start !== HanimeMainScreenComponent.prototype.start) {
+                      this.start(); // Call the start method from Lampa.Empty or fallback
+                 } else {
+                      // Fallback if empty state setup somehow failed to assign start
+                      console.error("HanimeMainScreenComponent: Cannot start, no rows/cards and empty state start not available.");
+                      if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Нечего отобразить.');
+                 }
                  return;
              }
 
-             if (loadingIndicator) loadingIndicator(true); // Show global loader
+             console.log("HanimeMainScreenComponent: start() - Activity is active. Setting up Lampa.Controller.");
 
-             // Create and add each HanimeLineComponent
-            for (const categoryKey in CATEGORIES) {
-                if (CATEGORIES.hasOwnProperty(categoryKey)) {
-                    const category = CATEGORIES[categoryKey];
-                    console.log("HanimeCatalogScreen: Creating line component for category:", categoryKey);
+            if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.add === 'function' && typeof Lampa.Controller.toggle === 'function' && typeof Lampa.Controller.collectionSet === 'function' && typeof Lampa.Controller.collectionFocus === 'function' && window.Navigator) {
 
-                    // Create line component, passing callbacks for card interactions and this screen component as ref
-                    var lineComponent = new HanimeLineComponent(
-                         categoryKey,
-                         category.title,
-                         this.onCardClick.bind(this), // Pass bound click handler
-                         this.showCardContextMenu.bind(this), // Pass bound context menu handler
-                         this // Pass reference to this screen component
-                    );
-
-                    lineComponents.push(lineComponent);
-                    lineComponentsMap[categoryKey] = lineComponent;
-
-                    // Render the line component and append its main element to the vertical scroll
-                    var lineElement = lineComponent.render();
-                     if(lineElement) {
-                         verticalScroll.append(lineElement[0]); // Append native DOM element
-                          console.log("HanimeCatalogScreen: Appended line element for category:", categoryKey);
-                     } else {
-                          console.error("HanimeCatalogScreen: Failed to render line component for category:", categoryKey);
-                          this.lineLoaded(categoryKey, []); // Treat as loaded but empty
-                     }
-                }
-            }
-             console.log("HanimeCatalogScreen: create() finished. All line components initiated.");
-             // lineLoaded callback from each HanimeLineComponent will handle hiding the loader and toggling activity.
-        };
-
-        this.start = function () {
-            console.log("HanimeCatalogScreen: start()");
-            // Check if this activity is the currently active one before setting up the controller
-             if (window.Lampa && Lampa.Activity && typeof Lampa.Activity.active === 'function' && Lampa.Activity.active().activity !== this.activity) {
-                console.log("HanimeCatalogScreen: start() - Not the currently active activity, skipping controller setup.");
-                return;
-            }
-             console.log("HanimeCatalogScreen: start() - Activity is active. Setting up Lampa.Controller.");
-
-            if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.add === 'function' && typeof Lampa.Controller.toggle === 'function' && verticalScroll && typeof verticalScroll.render === 'function' && typeof Lampa.Controller.collectionSet === 'function' && typeof Lampa.Controller.collectionFocus === 'function') {
-
-                 // Collect all card elements from all loaded lines for the main controller collection
-                 // Ensure this happens *after* all lines have called lineLoaded and populated allCardsCollection
-                 // The lineLoaded callback already handles this and calls toggle() after the last line loads.
-                 // So, this `start` method will primarily set up the Controller config and the initial focus if needed.
+                 // Get all selectable elements (cards) from all rows
+                 let allSelectableElements = this.$allCards; // Use the pre-collected collection
 
                  Lampa.Controller.add('content', {
+                     // This toggle method is called when the controller is activated
                      toggle: function () {
-                         console.log("HanimeCatalogScreen: Controller toggle() called. Setting collection...");
-                          // Set the collection of all card DOM elements from all lines
-                          Lampa.Controller.collectionSet(allCardsCollection);
+                         console.log("HanimeMainScreenComponent: Controller toggle() called.");
+                          // Set the entire collection of selectable items on the screen
+                         Lampa.Controller.collectionSet(allSelectableElements);
 
-                         // Attempt to focus the last focused item or the first item if none saved
-                         let focusElement = lastFocusedElement; // Use saved element if any
-                         if (!focusElement && allCardsCollection.length > 0) {
-                              // Find the first card element in the collection to focus initially
-                              focusElement = allCardsCollection[0];
-                              console.log("HanimeCatalogScreen: No last focused element, focusing the first card in the collection.");
+                          // Try to restore focus to the last known position
+                         let lastElement = rows[focusedRowIndex] ? rows[focusedRowIndex].getSelectableElements().eq(lastFocusedItemIndex) : $();
+
+                         if (lastElement.length === 0) {
+                             // If last element not found (e.g., category was empty), try the first card of the first row
+                             lastElement = allSelectableElements.eq(0);
+                             focusedRowIndex = 0;
+                             lastFocusedItemIndex = 0;
                          }
 
-                         if (focusElement) {
-                              Lampa.Controller.collectionFocus(focusElement, verticalScroll.render()); // Use vertical scroll render as the container
-                              // Also ensure the horizontal scroll within that line is updated
-                               let focusedCardJq = $(focusElement);
-                               if (focusedCardJq.length) {
-                                   // Find the HanimeLineComponent instance that contains this card
-                                    for (const lineComp of lineComponents) {
-                                        if (lineComp && typeof lineComp.updateScrollToFocus === 'function' && $(lineComp.render()).find(focusedCardJq).length) {
-                                             lineComp.updateScrollToFocus(focusedCardJq);
-                                             break; // Found the line component
-                                        }
-                                    }
-                               }
-                              console.log("HanimeCatalogScreen: Controller collectionFocus called.");
+                         if (lastElement.length > 0) {
+                              Lampa.Controller.collectionFocus(lastElement); // Set focus
+                             // Manually ensure the relevant row is scrolled to the focused element
+                             rows[focusedRowIndex].updateScrollPosition(lastElement);
+                              console.log("HanimeMainScreenComponent: Controller collectionSet/Focus called in toggle(). Restored focus to row", focusedRowIndex, "item", lastFocusedItemIndex);
                          } else {
-                              console.warn("HanimeCatalogScreen: No elements available to focus controller on.");
+                             console.warn("HanimeMainScreenComponent: No selectable elements found to focus on start.");
+                              // This case should ideally be handled by the empty() call in build()
                          }
+                     }.bind(this), // Bind 'this' to access component methods/properties
 
-                     },
+                     // Navigation handlers. Lampa's Navigator handles finding the *next* element
+                     // within the collection set by collectionSet. We react to the movement.
                      left: function () {
-                         // Delegate left movement to the currently focused horizontal scroll
-                         if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('left')) {
-                              Navigator.move('left');
-                         } else if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.toggle === 'function') {
-                             // If at the leftmost edge of the horizontal line, go to the menu
-                              Lampa.Controller.toggle('menu');
-                         } else console.log("HanimeCatalogScreen: Cannot move left, Navigator or menu controller unavailable.");
-                     },
+                         let newElement = window.Navigator.move('left');
+                         this.onFocusChange(newElement); // React to the focus change
+                     }.bind(this),
                      right: function () {
-                          // Delegate right movement to the currently focused horizontal scroll
-                         if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('right')) {
-                             Navigator.move('right');
-                         } else {
-                              console.log("HanimeCatalogScreen: Cannot move right, Navigator unavailable or no more elements.");
-                         }
-                     },
+                         let newElement = window.Navigator.move('right');
+                         this.onFocusChange(newElement); // React to the focus change
+                     }.bind(this),
                      up: function () {
-                          // Delegate up movement to the main vertical scroll
-                         if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('up')) {
-                             Navigator.move('up');
-                         } else if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.toggle === 'function') {
-                             // If at the top line and pressing up, go to the head
-                              Lampa.Controller.toggle('head');
-                         } else console.log("HanimeCatalogScreen: Cannot move up, Navigator or head controller unavailable.");
-                     },
+                         let newElement = window.Navigator.move('up');
+                         this.onFocusChange(newElement); // React to the focus change
+                     }.bind(this),
                      down: function () {
-                          // Delegate down movement to the main vertical scroll
-                         if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('down')) {
-                             Navigator.move('down');
-                         } else {
-                              console.log("HanimeCatalogScreen: Cannot move down, Navigator unavailable or no elements below.");
-                         }
-                     },
-                     back: this.back,
-                     // The `enter` event is handled by the HanimeCard instances directly and delegated up via callbacks
-                     // The `long` event is handled by the HanimeCard instances and delegated up via callbacks
+                         let newElement = window.Navigator.move('down');
+                         this.onFocusChange(newElement); // React to the focus change
+                     }.bind(this),
+
+                      // Interaction handlers
+                     enter: function (element, event) {
+                          console.log("HanimeMainScreenComponent: Enter pressed on element:", element);
+                          const cardData = $(element).data('cardData'); // Get data from the element
+                          if (cardData) {
+                               this.onCardClick(cardData);
+                          } else {
+                              console.error("HanimeMainScreenComponent: No cardData found on element on Enter press.");
+                          }
+                     }.bind(this),
+                     long: function (element, event) {
+                          console.log("HanimeMainScreenComponent: Long press on element:", element);
+                          const cardData = $(element).data('cardData'); // Get data from the element
+                          const cardElement = $(element); // Get jQuery element
+                          if (cardData) {
+                               this.showCardContextMenu(cardElement, cardData);
+                          } else {
+                              console.error("HanimeMainScreenComponent: No cardData found on element on Long press.");
+                          }
+                     }.bind(this),
+
+                     // Back button handler
+                     back: this.back.bind(this) // Bind 'this'
                  });
 
-                // The activityToggler() call from lineLoaded will handle the initial Lampa.Controller.toggle('content');
-                // If somehow lineLoaded finished before start() is called, we should call toggle here.
-                // However, Lampa activity lifecycle usually calls create -> start -> toggle.
-                // Let's rely on the post-load toggle for initial display.
-                // But we need to ensure start() also sets the controller config in case toggle is called later.
-                 console.log("HanimeCatalogScreen: Controller 'content' configuration added. Initial toggle is handled by lineLoaded.");
-
+                 // Activate the controller
+                 Lampa.Controller.toggle('content');
+                  console.log("HanimeMainScreenComponent: Controller 'content' toggled.");
 
              } else {
-                console.error("HanimeCatalogScreen: Lampa.Controller or verticalScroll, or required methods not available in start(). Cannot setup main Controller.");
-                 // Add a basic controller for the back button as a fallback if main controller setup fails
+                console.error("HanimeMainScreenComponent: Lampa.Controller or Navigator, or required methods not available in start(). Cannot setup main Controller.");
+                 // Add a basic controller for the back button as a fallback
                  if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.add === 'function' && typeof Lampa.Controller.toggle === 'function') {
-                     console.log("HanimeCatalogScreen: Attempting to add basic Controller for Back button.");
-                     Lampa.Controller.add('content', { back: this.back });
-                      // If we're here, there might be no elements to focus on anyway, just allow back
-                      Lampa.Controller.toggle('content');
-                 } else console.warn("HanimeCatalogScreen: Lampa.Controller unavailable or methods missing, cannot add basic back handler.");
+                     console.log("HanimeMainScreenComponent: Attempting to add basic Controller for Back button.");
+                     Lampa.Controller.add('content', { back: this.back.bind(this) });
+                     Lampa.Controller.toggle('content');
+                 } else console.warn("HanimeMainScreenComponent: Lampa.Controller unavailable or methods missing, cannot add basic back handler.");
+             }
+        };
+
+        // Called by navigation handlers when focus changes
+        this.onFocusChange = function(element) {
+             if (!element) {
+                 console.log("HanimeMainScreenComponent: onFocusChange called with null element. Likely leaving collection boundary.");
+                 // Handle leaving collection if needed (e.g., move to menu if leaving left from first item)
+                 // Navigator.move handles this if it's set up to wrap or boundary check.
+                 // For now, if element is null after move, assume we're at a boundary Lampa didn't navigate past.
+                 return;
+             }
+
+             // Find the position of the newly focused element
+             const position = this.findCardPosition(element);
+
+             if (position.rowIndex !== -1) {
+                  console.log("HanimeMainScreenComponent: Focus changed to row", position.rowIndex, "item", position.itemIndex);
+
+                  // Update internal state
+                 this.focusedRowIndex = position.rowIndex;
+                 this.lastFocusedItemIndex = position.itemIndex;
+
+                  // Tell the row to scroll to make the item visible
+                 position.row.updateScrollPosition(position.element);
+
+                  // Optional: Update favorite icons on focus for the focused card
+                  // This is already done by HanimeCard's 'visible' event, but focusing *might* not trigger 'visible' if already in viewport
+                   // let cardInstance = $(element).data('cardInstance');
+                   // if(cardInstance && typeof cardInstance.update === 'function') cardInstance.update();
+
+             } else {
+                  console.warn("HanimeMainScreenComponent: onFocusChange called with element not found in any row:", element);
+                  // This might happen if Navigator moves focus to something unexpected
              }
         };
 
 
         this.pause = function () {
-             console.log("HanimeCatalogScreen: pause() called.");
-             // Save the currently focused DOM element from the main Controller collection
-             if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content' && typeof Lampa.Controller.item === 'function') {
-                 lastFocusedElement = Lampa.Controller.item() || lastFocusedElement;
-                  console.log("HanimeCatalogScreen: Activity paused. Saved last focused DOM item:", lastFocusedElement);
+             console.log("HanimeMainScreenComponent: pause() called.");
+             // Save the last focused item's position when pausing
+             if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content') {
+                 let focusedElement = Lampa.Controller.item();
+                  if (focusedElement) {
+                      const position = this.findCardPosition(focusedElement);
+                       if (position.rowIndex !== -1) {
+                           this.focusedRowIndex = position.rowIndex;
+                           this.lastFocusedItemIndex = position.itemIndex;
+                           console.log("HanimeMainScreenComponent: Activity paused. Saved focus position: row", this.focusedRowIndex, "item", this.lastFocusedItemIndex);
+                       } else {
+                           console.warn("HanimeMainScreenComponent: Pause called, but focused element not found in rows. Position not saved.");
+                       }
+                  } else {
+                       console.log("HanimeMainScreenComponent: Pause called, but no element currently focused by Controller.");
+                  }
              } else {
-                  console.log("HanimeCatalogScreen: Pause called, but content controller not active or Controller.item missing. Last focus not saved.");
+                  console.log("HanimeMainScreenComponent: Pause called, but content controller not active. Last focus not saved.");
              }
-             // Line components don't need explicit pause calls as they don't manage the main controller
         };
 
         this.stop = function () {
-            console.log("HanimeCatalogScreen: stop() called.");
-             // No specific stop logic needed besides what destroy handles
+             console.log("HanimeMainScreenComponent: stop() called.");
+             // No specific stop logic needed beyond pause/destroy cleanup
         };
 
+        // Returns the main screen's DOM element
         this.render = function () {
-             console.log("HanimeCatalogScreen: render() called.");
-            if (!mainHtml) {
+            if (!html) {
                  this.buildLayout();
+                 // Data fetching and row building happens in create/fetchCatalogs/build
+                 // The render method just returns the container
             }
-            return mainHtml;
+            return html; // Return jQuery object
         };
 
+        // Destroys the component and cleans up resources
         this.destroy = function () {
-            console.log("HanimeCatalogScreen: destroy() called.");
+            console.log("HanimeMainScreenComponent: destroy() called.");
 
-            // Destroy all child line components
-            if (lineComponents) {
-                 lineComponents.forEach(lineComp => {
-                     if (lineComp && typeof lineComp.destroy === 'function') {
-                          lineComp.destroy();
-                     }
+            if(network && typeof network.clear === 'function') network.clear(); network = null;
+
+             // Destroy all HanimeRow instances
+             if (rows && Array.isArray(rows)) {
+                 rows.forEach(row => {
+                     if (row && typeof row.destroy === 'function') row.destroy();
                  });
-                  console.log("HanimeCatalogScreen: Destroyed all line components.");
-            }
-            lineComponents = [];
-            lineComponentsMap = {};
-
-             // Destroy main vertical scroll instance
-             if (verticalScroll && typeof verticalScroll.destroy === 'function') {
-                 verticalScroll.destroy();
-                 console.log("HanimeCatalogScreen: Destroyed vertical scroll instance.");
+                 console.log("HanimeMainScreenComponent: Destroyed all row instances.");
              }
-             verticalScroll = null;
+            rows = null; this.$allCards = $(); // Clear references
 
-             // Remove main DOM element
-             if (mainHtml && typeof mainHtml.remove === 'function') {
-                 mainHtml.remove();
-                 console.log("HanimeCatalogScreen: Removed main html element from DOM.");
+             if (html && typeof html.remove === 'function') {
+                 html.remove();
+                 console.log("HanimeMainScreenComponent: Removed html element from DOM.");
              }
-            mainHtml = null; allCardsCollection = []; lastFocusedElement = null;
+            html = null;
 
-            // Remove the Controller config associated with this component instance
-            if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && typeof Lampa.Controller.remove === 'function' && typeof Lampa.Controller.collectionSet === 'function') {
-                 // Check if this component's controller is currently active before setting collection to empty
-                 if (Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content') {
-                       console.log("HanimeCatalogScreen: Clearing Controller collection.");
-                      Lampa.Controller.collectionSet([]); // Important for cleanup
+            // Remove the controller
+            if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && typeof Lampa.Controller.remove === 'function') {
+                 // Check if this component's controller is currently active before potentially clearing collection
+                 if (Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content' && typeof Lampa.Controller.collectionSet === 'function') {
+                       console.log("HanimeMainScreenComponent: Clearing Controller collection.");
+                      Lampa.Controller.collectionSet([]); // Clear collection managed by this controller
                  }
                  // Always try to remove the controller by name
                  Lampa.Controller.remove('content');
-                  console.log("HanimeCatalogScreen: Controller 'content' removed.");
-            } else console.warn("HanimeCatalogScreen: Lampa.Controller not available or remove method missing for cleanup in destroy.");
+                  console.log("HanimeMainScreenComponent: Controller 'content' removed.");
+            } else console.warn("HanimeMainScreenComponent: Lampa.Controller not available or remove method missing for cleanup in destroy.");
 
-            // Reset loading state counters
-            loadedLinesCount = 0;
-            expectedLines = Object.keys(CATEGORIES).length; // Reset expected lines count
+             // Reset focus state
+             this.focusedRowIndex = 0;
+             this.lastFocusedItemIndex = 0;
 
-            console.log("HanimeCatalogScreen: destroy() finished.");
+            console.log("HanimeMainScreenComponent: destroy() finished.");
         };
 
+        // Back button handler
         this.back = function () {
-             console.log("HanimeCatalogScreen: back() called. Attempting Activity.backward().");
-             // Go back in Lampa's activity stack
+             console.log("HanimeMainScreenComponent: back() called. Attempting Activity.backward().");
              if(window.Lampa && Lampa.Activity && typeof Lampa.Activity.backward === 'function') {
                  Lampa.Activity.backward();
-             } else console.warn("HanimeCatalogScreen: Lampa.Activity or backward method missing for navigation.");
+             } else console.warn("HanimeMainScreenComponent: Lampa.Activity or backward method missing for navigation.");
         };
-
-         // Store componentObject reference (contains activity)
-         this.componentObject = componentObject;
-         this.activity = componentObject.activity; // Shortcut to activity
     }
 
-
     // --- Plugin Initialization ---
-
     function startPlugin() {
         console.log("Hanime Plugin: startPlugin() invoked.");
 
@@ -1105,8 +1074,8 @@
              console.log("Hanime Plugin: initializeLampaDependencies() called (Lampa appready or fallback delay completed).");
 
              // Perform critical Lampa component availability checks
-             if (!window.Lampa || typeof window.Lampa !== 'object' || !Lampa.Template || typeof Lampa.Template !== 'object' || !Lampa.Component || typeof Lampa.Component !== 'object' || !Lampa.Activity || typeof Lampa.Activity !== 'object' || !Lampa.Controller || typeof Lampa.Controller !== 'object' || !window.$ || typeof window.$ !== 'function' || !Lampa.Scroll || typeof Lampa.Scroll !== 'function' || !Lampa.Reguest || typeof Lampa.Reguest !== 'function') {
-                  console.error("Hanime Plugin: CRITICAL: Required Lampa components (Lampa, Template, Component, Activity, Controller, jQuery, Scroll, Reguest) are not available after waiting for appready. Initialization failed. Please check Lampa version and installation.");
+             if (!window.Lampa || typeof window.Lampa !== 'object' || !Lampa.Template || typeof Lampa.Template !== 'object' || !Lampa.Component || typeof Lampa.Component !== 'object' || !Lampa.Activity || typeof Lampa.Activity !== 'object' || !Lampa.Controller || typeof Lampa.Controller !== 'object' || !window.$ || typeof window.$ !== 'function' || !Lampa.Scroll || typeof Lampa.Scroll !== 'function' || !Lampa.Reguest || typeof Lampa.Reguest !== 'function' || !window.Navigator || typeof window.Navigator !== 'object') {
+                  console.error("Hanime Plugin: CRITICAL: Required Lampa components (Lampa, Template, Component, Activity, Controller, jQuery, Scroll, Reguest, Navigator) are not available after waiting for appready. Initialization failed. Please check Lampa version and installation.");
                   if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
                      Lampa.Noty.show('Ошибка плагина: Компоненты Lampa недоступны. Обновите Lampa или плагин.', 15000);
                   }
@@ -1131,7 +1100,6 @@
                  Lampa.Template.add('card_quality_temp', '<div class="card__quality"><div></div></div>');
                  Lampa.Template.add('card_year_temp', '<div class="card__age"></div>');
                  Lampa.Template.add('card_type_temp', '<div class="card__type"></div>');
-                 // Template for lock icon used in context menu for premium features
                  Lampa.Template.add('icon_lock', `<svg style="width: 1em; height: 1em;" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17C13.11 17 14 16.11 14 15C14 13.89 13.11 13 12 13C10.89 13 10 13.89 10 15C10 16.11 10.89 17 12 17M18 8H17V6C17 3.24 14.76 1 12 1C9.24 1 7 3.24 7 6V8H6C4.9 8 4 8.9 4 10V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V10C20 8.9 19.1 8 18 8M9 6C9 4.34 10.34 3 12 3C13.66 3 15 4.34 15 6V8H9V6M18 20H6V10H18V20Z"></path></svg>`);
                   console.log("Hanime Plugin: Standard template fallbacks added successfully.");
              } else {
@@ -1161,37 +1129,32 @@
                   console.error("Hanime Plugin: Lampa.Template.add method not available. Cannot add hanime-card template.");
              }
 
-             console.log("Hanime Plugin: Custom CSS block REMOVED as requested. Relying on standard Lampa styles.");
-             // Note: You might need to add CSS for the HanimeCatalogScreen if its layout differs significantly.
-             // E.g., `.hanime-catalog-screen { padding: 2em; }` or similar spacing adjustments.
-             // But for a simple vertical stack of existing `items-line`, standard Lampa CSS might suffice.
+             // Note: Custom CSS was removed as requested in previous iteration.
+             // Ensure Lampa's default card/items-line styles are sufficient or provide custom CSS separately if needed.
 
-
-             console.log("Hanime Plugin: Registering HanimeCatalogScreen component...");
+             console.log("Hanime Plugin: Registering HanimeMainScreenComponent...");
              if (window.Lampa && Lampa.Component && typeof Lampa.Component.add === 'function') {
-                 Lampa.Component.add('hanime_catalog_screen', HanimeCatalogScreen);
+                 Lampa.Component.add('hanime_catalog_screen', HanimeMainScreenComponent); // Register the new main component
                  console.log("Hanime Plugin: Component 'hanime_catalog_screen' registered successfully.");
              } else {
                  console.error("Hanime Plugin: Lampa.Component.add method not available. Cannot register component.");
                   if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
-                     Lampa.Noty.show('Ошибка плагина: Не удалось зарегистрировать компонент экрана каталога.', 5000);
+                     Lampa.Noty.show('Ошибка плагина: Не удалось зарегистрировать компонент.', 5000);
                   }
-                  return; // Stop if the main screen component can't be registered
              }
 
              console.log("Hanime Plugin: Calling addMenuItem()...");
-             addMenuItem(); // Now add the single menu item after the screen component is registered
+             addMenuItem(); // Add the single menu item
               console.log("Hanime Plugin: addMenuItem() called from initializeLampaDependencies.");
 
               console.log("Hanime Plugin: initializeLampaDependencies() finished.");
         }
 
-        // Add a single menu item to launch the main HanimeCatalogScreen
         function addMenuItem() {
              console.log("Hanime Plugin: addMenuItem() called.");
 
              // Basic Lampa dependency checks for menu item creation
-             if (!window.Lampa || typeof window.Lampa !== 'object' || !Lampa.Activity || typeof Lampa.Activity !== 'object' || !Lampa.Controller || typeof Lampa.Controller !== 'object' || !window.$ || typeof window.$ !== 'function' || !Lampa.Component || typeof Lampa.Component.get !== 'function') {
+             if (!window.Lampa || typeof window.Lampa !== 'object' || !Lampa.Activity || typeof Lampa.Activity !== 'object' || !Lampa.Controller || typeof Lampa.Controller !== 'object' || !window.$ || typeof window.$ !== 'function' || !Lampa.Component || typeof Lampa.Component !== 'object' || typeof Lampa.Component.get !== 'function') {
                   console.warn("Hanime Plugin: addMenuItem cannot proceed. Missing Lampa core components, jQuery, or Component.get.");
                   return;
              }
@@ -1206,59 +1169,61 @@
              console.log("Hanime Plugin: addMenuItem checks passed.");
 
              // Check if our main screen component is registered
-             var ourScreenComponentRegistered = Lampa.Component.get('hanime_catalog_screen');
-             if (!ourScreenComponentRegistered) {
-                 console.warn("Hanime Plugin: addMenuItem skipping - Screen component 'hanime_catalog_screen' is not found/registered in Lampa.Component.");
+             var ourComponentRegistered = Lampa.Component.get('hanime_catalog_screen');
+             if (!ourComponentRegistered) {
+                 console.warn("Hanime Plugin: addMenuItem skipping - Component 'hanime_catalog_screen' is not found/registered in Lampa.Component.");
                  return;
              }
-             console.log("Hanime Plugin: Screen component 'hanime_catalog_screen' confirmed registered.");
+             console.log("Hanime Plugin: Component 'hanime_catalog_screen' confirmed registered.");
 
-             // Check if the main menu item already exists to prevent duplicates
-             const mainMenuItemText = 'Hanime Catalog'; // Define the text for the main menu item
-             if (menuList.find('.menu__text:contains("' + mainMenuItemText + '")').length > 0) {
-                 console.log("Hanime Plugin: Main menu item with text '" + mainMenuItemText + "' already exists in DOM. Skipping addMenuItem.");
+             // Define the text for the single menu item
+             const menuItemText = 'Hanime Catalog';
+
+             // Check if the menu item already exists
+             if (menuList.find('.menu__text:contains("' + menuItemText + '")').length > 0) {
+                 console.log("Hanime Plugin: Menu item with text '" + menuItemText + "' already exists in DOM. Skipping addMenuItem.");
                  return;
              }
 
-             console.log("Hanime Plugin: Adding main menu item DOM element to Lampa menu.");
+             console.log("Hanime Plugin: Adding single menu item DOM element to Lampa menu.");
 
-            var menu_item = $(`
-                <li class="menu__item selector">
-                    <div class="menu__ico">
-                        <svg fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z"></path>
-                        </svg>
-                    </div>
-                    <div class="menu__text">${mainMenuItemText}</div> <!-- Use main title -->
-                </li>
-            `);
+             var menu_item = $(`
+                 <li class="menu__item selector">
+                     <div class="menu__ico">
+                         <!-- Use a fitting icon, e.g., a grid or multiple squares -->
+                         <svg fill="currentColor" viewBox="0 0 24 24">
+                             <path d="M4 11H9V5H4M9 18H4V12H9M18 18H13V12H18M18 11H13V5H18V11Z"></path>
+                         </svg>
+                     </div>
+                     <div class="menu__text">${menuItemText}</div>
+                 </li>
+             `);
 
             if (typeof menu_item.on === 'function') {
                 menu_item.on('hover:enter', function () {
-                     console.log("Hanime Plugin: Main menu item '" + mainMenuItemText + "' activated via 'hover:enter'. Pushing activity.");
+                     console.log("Hanime Plugin: Menu item '" + menuItemText + "' activated via 'hover:enter'. Pushing main activity.");
                      if (window.Lampa && Lampa.Activity && typeof Lampa.Activity.push === 'function') {
                          Lampa.Activity.push({
-                             url: '', // URL is not strictly needed for component activities
-                             title: mainMenuItemText, // Title for the screen header
+                             url: '', // Not used by the component itself for fetching
+                             title: menuItemText, // Use the menu item text as the activity title
                              component: 'hanime_catalog_screen', // Launch the main screen component
-                             page: 1 // Page is not directly relevant for this screen structure but can be included
-                             // No 'category' parameter here, the screen component loads all.
+                             page: 1 // Or whatever initial state is needed
                          });
                           console.log("Hanime Plugin: Lampa.Activity.push called for main screen.");
                      } else {
                           console.warn("Hanime Plugin: Lampa.Activity or push method unavailable to launch main activity.");
-                         if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Не удалось запустить каталог.');
+                         if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Не удалось запустить активность.');
                      }
                 });
-                console.log("Hanime Plugin: 'hover:enter' event listener attached to main menu item.");
+                console.log("Hanime Plugin: 'hover:enter' event listener attached to menu item.");
             } else {
-                console.warn("Hanime Plugin: jQuery on() method not available for main menu item. Cannot attach event listener.");
+                console.warn("Hanime Plugin: jQuery on() method not available for menu item. Cannot attach event listener.");
             }
 
              // Append the created menu item to the list
             if (menuList.length > 0) {
                  menuList.append(menu_item);
-                 console.log("Hanime Plugin: Main menu item DOM element successfully added to Lampa menu list.");
+                 console.log("Hanime Plugin: Menu item DOM element successfully added to Lampa menu list.");
             } else {
                  console.error("Hanime Plugin: addMenuItem failed during append: Lampa menu list DOM element ('.menu .menu__list') not found anymore.");
             }
