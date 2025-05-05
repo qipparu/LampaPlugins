@@ -1,4 +1,261 @@
-// ... (previous code up to HanimeComponent constructor)
+(function () {
+    'use strict';
+
+    // Define the categories with their keys, titles, and URLs
+    const CATEGORIES = [
+        { key: 'newset', title: 'Последние добавленные', url: "/catalog/movie/newset.json" },
+        { key: 'recent', title: 'Недавние', url: "/catalog/movie/recent.json" },
+        { key: 'mostlikes', title: 'Самые понравившиеся', url: "/catalog/movie/mostlikes.json" },
+        { key: 'mostviews', title: 'Самые просматриваемые', url: "/catalog/movie/mostviews.json" }
+    ];
+
+    const API_BASE_URL = "https://86f0740f37f6-hanime-stremio.baby-beamup.club";
+    const STREAM_URL_TEMPLATE = API_BASE_URL + "/stream/movie/{id}.json";
+    const META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
+    const PROXY_BASE_URL = "http://77.91.78.5:3000"; // Keep proxy if needed
+
+    function HanimeCard(data, componentRef) {
+        var processedData = {
+            id: data.id,
+            title: data.name || data.title || 'Без названия',
+            poster_path: data.poster || data.img,
+            vote_average: data.vote_average || data.vote || null,
+            quality: data.quality || data.release_quality || null,
+            release_year: ((data.year || data.release_date || '') + '').slice(0, 4),
+            type: data.first_air_date ? 'tv' : 'movie', // Assuming 'tv' for series, 'movie' otherwise
+            original_name: data.original_name
+        };
+
+        // Use the registered template
+        // Ensure Lampa.Template and get method exist before using
+        var cardTemplate = (window.Lampa && Lampa.Template && typeof Lampa.Template.get === 'function')
+            ? Lampa.Template.get('hanime-card', { img: processedData.poster_path, title: processedData.title })
+            : '<div>Error: Template not available</div>'; // Fallback if template system is broken
+
+        var cardElement = $(cardTemplate);
+
+        this.addicon = function(name) {
+            var iconsContainer = cardElement.find('.card__icons-inner');
+            if (iconsContainer.length) {
+                var icon = document.createElement('div');
+                icon.classList.add('card__icon');
+                icon.classList.add('icon--'+name);
+                iconsContainer.append(icon);
+            } else {
+                // console.warn("HanimeCard: Could not find .card__icons-inner to add icon:", name); // Too noisy
+            }
+        }
+
+        this.addDetails = function() {
+             var viewElement = cardElement.find('.card__view');
+
+             // Vote Average
+             if (processedData.vote_average > 0 && viewElement.length) {
+                 let voteElement = cardElement.find('.card__vote');
+                 if (!voteElement.length) {
+                     voteElement = $('<div class="card__vote"></div>');
+                     viewElement.append(voteElement);
+                 }
+                 voteElement.text(parseFloat(processedData.vote_average).toFixed(1));
+             } else {
+                 cardElement.find('.card__vote').remove();
+             }
+
+            // Quality
+            if (processedData.quality && viewElement.length) {
+                 let qualityElement = cardElement.find('.card__quality');
+                 if (!qualityElement.length) {
+                     qualityElement = $('<div class="card__quality"><div></div></div>');
+                     viewElement.append(qualityElement);
+                 }
+                 qualityElement.find('div').text(processedData.quality);
+            } else {
+                cardElement.find('.card__quality').remove();
+            }
+
+             // Type (Movie/TV)
+             if (processedData.type && viewElement.length) {
+                 let typeElement = cardElement.find('.card__type');
+                  if (!typeElement.length) {
+                     typeElement = $('<div class="card__type"></div>');
+                      viewElement.append(typeElement);
+                  }
+                  typeElement.text(processedData.type.toUpperCase());
+             } else {
+                 cardElement.find('.card__type').remove();
+             }
+
+             // Year
+             let ageElement = cardElement.find('.card__age');
+             const year = processedData.release_year;
+             if (ageElement.length) {
+                  if (year && year !== '0000') {
+                      ageElement.text(year).show();
+                  } else {
+                       ageElement.text('').hide();
+                  }
+             } else {
+                 if (year && year !== '0000') {
+                     let newAgeElement = $('<div class="card__age"></div>').text(year);
+                      let titleElement = cardElement.find('.card__title');
+                      if (titleElement.length) {
+                          titleElement.after(newAgeElement);
+                          // console.warn("HanimeCard: Created .card__age element dynamically. Prefer including in template."); // Too noisy
+                      } else {
+                          cardElement.append(newAgeElement);
+                          console.error("HanimeCard: Cannot find .card__title to place .card__age dynamically.");
+                      }
+                 }
+             }
+        }
+
+        this.updateFavoriteIcons = function() {
+            // Clear existing icons and markers before adding
+            cardElement.find('.card__icons-inner').empty();
+            cardElement.find('.card__marker').remove();
+
+             var status = (window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.check === 'function') ? Lampa.Favorite.check(processedData) : {};
+             // if(Object.keys(status).length === 0 && window.Lampa && Lampa.Favorite) console.warn("HanimeCard: Lampa.Favorite.check returned empty status for", processedData.title, ". Data:", processedData); // Too noisy
+
+            if (status.book) this.addicon('book');
+            if (status.like) this.addicon('like');
+            if (status.wath) this.addicon('wath');
+            // Check history status using Timeline if available, fallback to Favorite status
+            const isHistory = (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.watched === 'function' && Lampa.Timeline.watched(processedData)) || status.history;
+            if (isHistory) this.addicon('history');
+
+
+             var marks = ['look', 'viewed', 'scheduled', 'continued', 'thrown'];
+             var activeMarker = marks.find(m => status[m]);
+
+             if (activeMarker) {
+                 var markerElement = cardElement.find('.card__marker');
+                 if (!markerElement.length) {
+                     markerElement = $('<div class="card__marker"><span></span></div>');
+                     cardElement.find('.card__view').append(markerElement);
+                 }
+                 markerElement.find('span').text(window.Lampa && Lampa.Lang && typeof Lampa.Lang.translate === 'function' ? Lampa.Lang.translate('title_' + activeMarker) : activeMarker);
+                 markerElement.removeClass(marks.map(m => 'card__marker--' + m).join(' '))
+                             .addClass('card__marker--' + activeMarker);
+             } else {
+                 cardElement.find('.card__marker').remove();
+             }
+        };
+
+        this.onVisible = function() {
+             var imgElement = cardElement.find('.card__img');
+
+             // Only load image if it's not already loaded or broken
+             if (imgElement.length && (!imgElement.attr('src') || imgElement.attr('src').includes('img_load.svg'))) {
+                 var src = processedData.poster_path;
+
+                 if(window.Lampa && Lampa.ImageCache && typeof Lampa.ImageCache.read === 'function' && typeof Lampa.ImageCache.write === 'function') {
+                      // Use ImageCache if available
+                      if(!Lampa.ImageCache.read(imgElement[0], src)) {
+                          imgElement[0].onload = () => {
+                              cardElement.addClass('card--loaded');
+                              Lampa.ImageCache.write(imgElement[0], imgElement[0].src);
+                          };
+                          imgElement[0].onerror = () => {
+                               console.error('Hanime Plugin: Image load error:', src);
+                               imgElement.attr('src', './img/img_broken.svg');
+                               if(window.Lampa && Lampa.Tmdb && typeof Lampa.Tmdb.broken === 'function') Lampa.Tmdb.broken();
+                          };
+                          imgElement.attr('src', src || './img/img_broken.svg');
+                      } else {
+                         cardElement.addClass('card--loaded');
+                      }
+                 } else {
+                     // Fallback to basic image loading
+                     // console.warn("Hanime Plugin: Lampa.ImageCache not available. Using basic image loading."); // Too noisy
+                      imgElement[0].onload = () => { cardElement.addClass('card--loaded'); /* console.log("HanimeCard: Image loaded (basic):", src); */ }; // Too noisy
+                     imgElement[0].onerror = () => { console.error('Hanime Plugin: Image load error (basic):', src); imgElement.attr('src', './img/img_broken.svg'); };
+                     imgElement.attr('src', src || './img/img_broken.svg');
+                 }
+             } else {
+                 // console.log("HanimeCard: Image already loaded or no img element.", imgElement.attr('src')); // Too noisy
+             }
+
+            this.updateFavoriteIcons();
+        }
+
+        this.create = function(){
+             if (cardElement.data('created')) {
+                 return;
+             }
+
+             if (typeof cardElement.on === 'function') {
+                cardElement.on('hover:focus', function () {
+                     // Call componentRef method to handle scroll update
+                     if (componentRef && componentRef.updateScrollToFocus && typeof componentRef.updateScrollToFocus === 'function') {
+                          componentRef.updateScrollToFocus(cardElement);
+                     }
+                     this.update(); // Update icons when focused
+                }.bind(this));
+
+                 cardElement.on('hover:enter', function () {
+                     // Call componentRef method to handle card click
+                     if (componentRef && componentRef.onCardClick && typeof componentRef.onCardClick === 'function') {
+                         componentRef.onCardClick(processedData);
+                     }
+                }.bind(this));
+
+                cardElement.on('hover:long', function(){
+                     // Call componentRef method to show context menu
+                     if (componentRef && componentRef.showCardContextMenu && typeof componentRef.showCardContextMenu === 'function') {
+                          componentRef.showCardContextMenu(cardElement, processedData);
+                     }
+                 }.bind(this));
+             } else {
+                 console.warn("HanimeCard: jQuery on() method not available to attach hover events.");
+             }
+
+             this.card = cardElement[0]; // Store native DOM element
+             if (this.card && typeof this.card.addEventListener === 'function') {
+                this.card.addEventListener('visible', this.onVisible.bind(this));
+             } else {
+                 console.warn("HanimeCard: Cannot attach 'visible' event listener, native element or addEventListener not available.");
+             }
+
+             // Add details and update icons after a short delay to allow DOM attachment
+             setTimeout(() => {
+                  this.addDetails();
+                  this.update();
+             }, 0);
+
+             cardElement.data('created', true);
+        }
+
+        this.update = function(){
+            this.updateFavoriteIcons();
+             // Lampa.Timeline.watched_status is usually called by Lampa itself on collection update
+             // if(window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.watched_status === 'function') Lampa.Timeline.watched_status(cardElement, processedData);
+             // else console.warn("HanimeCard: Cannot update watched status, Lampa.Timeline not available or method missing.");
+        }
+
+        this.render = function(js){
+             if (!cardElement.data('created')) {
+                 this.create();
+             }
+            return js ? cardElement[0] : cardElement; // Return native element if js=true
+        }
+
+        this.destroy = function(){
+             // Remove event listeners
+             if(this.card && typeof this.card.removeEventListener === 'function' && this.onVisible) this.card.removeEventListener('visible', this.onVisible.bind(this));
+             if(cardElement && typeof cardElement.off === 'function') { // Use jQuery off()
+                 cardElement.off('hover:focus');
+                 cardElement.off('hover:enter');
+                 cardElement.off('hover:long');
+             }
+
+             if(cardElement && typeof cardElement.remove === 'function') cardElement.remove();
+
+             // Nullify references
+             processedData = null; cardElement = null; this.card = null; componentRef = null;
+             // console.log("HanimeCard: Destroyed."); // Too noisy
+        }
+    }
 
     function HanimeComponent(componentObject) {
         var network = null;
@@ -49,31 +306,31 @@
                     network.native(url,
                         function (data) {
                             console.log(`HanimeComponent: Data received for category "${category.key}"`, data ? data.metas ? data.metas.length : 'no metas' : 'no data');
-                            // Safeguard against _this.categoryData being undefined
-                            if (_this && typeof _this.categoryData === 'object') {
-                                if (data && data.metas && Array.isArray(data.metas)) {
+                            if (data && data.metas && Array.isArray(data.metas)) {
+                                // Defensive check: ensure categoryData is still an object
+                                if (_this.categoryData) {
                                     _this.categoryData[category.key] = data.metas;
                                     resolve({ category: category.key, success: true, count: data.metas.length });
                                 } else {
-                                    console.error(`HanimeComponent: Invalid data format for category "${category.key}".`, data);
-                                    _this.categoryData[category.key] = []; // Store empty array on format error
-                                    resolve({ category: category.key, success: false, error: 'Invalid data format' });
+                                     console.warn(`HanimeComponent: Component destroyed before receiving data for "${category.key}".`);
+                                     resolve({ category: category.key, success: false, error: 'Component destroyed' });
                                 }
                             } else {
-                                console.error("HanimeComponent: _this or _this.categoryData is undefined in network success callback.", _this);
-                                resolve({ category: category.key, success: false, error: '_this context lost' });
+                                console.error(`HanimeComponent: Invalid data format for category "${category.key}".`, data);
+                                // Defensive check: ensure categoryData is still an object
+                                if (_this.categoryData) {
+                                    _this.categoryData[category.key] = []; // Store empty array on format error
+                                }
+                                resolve({ category: category.key, success: false, error: 'Invalid data format' });
                             }
                         },
                         function (errorStatus, errorText) {
                             console.error(`HanimeComponent: Failed to load category "${category.key}". Status: ${errorStatus}`, errorText);
-                             // Safeguard against _this.categoryData being undefined
-                            if (_this && typeof _this.categoryData === 'object') {
+                             // Defensive check: ensure categoryData is still an object
+                            if (_this.categoryData) {
                                 _this.categoryData[category.key] = []; // Store empty array on network error
-                                resolve({ category: category.key, success: false, error: `Status: ${errorStatus}` });
-                            } else {
-                                console.error("HanimeComponent: _this or _this.categoryData is undefined in network error callback.", _this);
-                                resolve({ category: category.key, success: false, error: '_this context lost on error' });
                             }
+                            resolve({ category: category.key, success: false, error: `Status: ${errorStatus}` });
                         },
                         false,
                         { dataType: 'json', timeout: 15000 }
@@ -91,17 +348,7 @@
 
                 if (hasAnyData) {
                     _this.buildAllCategories(); // Build UI with all available data
-
-                    // --- IMPORTANT: Update Controller AFTER building UI ---
-                    // Force the controller to re-evaluate its collection based on the new DOM elements
-                    if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.toggle === 'function') {
-                         console.log("HanimeComponent: Data loaded and UI built. Toggling controller to update collection.");
-                         Lampa.Controller.toggle('content'); // Re-toggle the content controller
-                    } else {
-                         console.warn("HanimeComponent: Lampa.Controller not available to update collection after building UI.");
-                    }
-                    // --- End IMPORTANT ---
-
+                    _this.updateControllerCollection(); // <-- Update controller after building UI
                 } else {
                     _this.empty("Не удалось загрузить данные ни для одной категории.");
                 }
@@ -118,7 +365,7 @@
 
             if (!(html && typeof html.empty === 'function' && typeof html.append === 'function')) {
                  console.error("HanimeComponent: Missing main html container or its methods in buildAllCategories(). Aborting UI build.");
-                 // Don't call empty here, fetchAllCategories will handle it if no data was loaded at all
+                 _this.empty("Не удалось построить интерфейс.");
                  return;
             }
 
@@ -135,6 +382,7 @@
             });
 
              console.log("HanimeComponent: buildAllCategories() finished.");
+             // updateControllerCollection is now called after this method finishes in fetchAllCategories.then()
         };
 
         // Builds a single horizontal line for a specific category
@@ -161,13 +409,15 @@
 
             if (!categoryScroll) {
                  console.error(`HanimeComponent: Lampa.Scroll not available. Cannot build category "${category.key}".`);
-                 // Don't show Noty here, handled by critical check or empty state
+                 if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
+                     Lampa.Noty.show('Ошибка плагина: Компонент Scroll недоступен.', 5000);
+                  }
                  return; // Skip building this category if Scroll is missing
             }
 
 
             // Store references
-            _this.items[category.key] = []; // Initialize array for this category
+            _this.items[category.key] = [];
             _this.itemsContainers[category.key] = categoryItemsContainer;
             _this.scrolls[category.key] = categoryScroll;
 
@@ -190,8 +440,80 @@
 
             } else {
                 console.error(`HanimeComponent: Missing required objects or methods before building cards for category "${category.key}".`);
-                // Don't show Noty here, handled by critical check or empty state
+                if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') {
+                     Lampa.Noty.show(`Ошибка плагина при создании карточек для "${category.title}".`, 5000);
+                  }
             }
+        };
+
+        // New method to update Controller collection and focus after UI is built
+        this.updateControllerCollection = function() {
+             var _this = this;
+             console.log("HanimeComponent: updateControllerCollection() called.");
+
+             // Check for required Lampa Controller components
+             if (!(window.Lampa && Lampa.Controller && typeof Lampa.Controller.collectionSet === 'function' && typeof Lampa.Controller.collectionFocus === 'function')) {
+                  console.warn("HanimeComponent: Lampa.Controller or required methods not available to update collection.");
+                  return;
+             }
+
+             // Build the full collection array from all card elements across all categories
+             let allCardElements = [];
+             CATEGORIES.forEach(category => {
+                 const categoryItems = this.items[category.key] || [];
+                 categoryItems.forEach(card => {
+                     const cardElement = card.render(true); // Get native DOM element
+                     if (cardElement) {
+                         allCardElements.push(cardElement);
+                     }
+                 });
+             });
+
+             if (allCardElements.length === 0) {
+                  console.warn("HanimeComponent: No card elements found to set Controller collection.");
+                  Lampa.Controller.collectionSet([]); // Set empty collection
+                  return;
+             }
+
+             // Set the collection to ALL card elements from ALL categories
+             Lampa.Controller.collectionSet(allCardElements);
+             console.log("HanimeComponent: Controller collectionSet with", allCardElements.length, "elements.");
+
+
+             // Determine which element to focus:
+             // 1. The last focused element if it exists and is still in the collection.
+             // 2. The first element of the first category with data.
+             // 3. The very first element in the combined collection as a last resort.
+             let focusElement = null;
+             if (last && last.element && allCardElements.includes(last.element)) {
+                 focusElement = last.element;
+                 console.log("HanimeComponent: Focusing last element:", focusElement);
+             } else {
+                 // Find the first element of the first category that has data
+                 for (const category of CATEGORIES) {
+                     const categoryItems = _this.items[category.key] || [];
+                     if (categoryItems.length > 0) {
+                         focusElement = categoryItems[0].render(true);
+                         console.log(`HanimeComponent: Focusing first element of category "${category.key}".`);
+                         break; // Found the first category with data, focus its first item
+                     }
+                 }
+                 // If no category had data (shouldn't happen if hasAnyData check passed, but safety)
+                 if (!focusElement && allCardElements.length > 0) {
+                      focusElement = allCardElements[0];
+                      console.log("HanimeComponent: Focusing first element in combined collection as fallback.");
+                 }
+             }
+
+             // Set the focus
+             if (focusElement) {
+                  Lampa.Controller.collectionFocus(focusElement);
+                  // Manually trigger scroll update for the initial focus
+                  _this.updateScrollToFocus($(focusElement)); // updateScrollToFocus also updates the 'last' variable
+             } else {
+                  console.warn("HanimeComponent: No element found to focus.");
+             }
+             console.log("HanimeComponent: Controller collectionFocus called.");
         };
 
 
@@ -493,61 +815,25 @@
             Lampa.Controller.add('content', {
                 toggle: function () {
                     console.log("HanimeComponent: Controller toggle() called.");
-
-                    // --- IMPORTANT: Build collection from current DOM elements ---
-                    // This runs whenever the controller is toggled, ensuring it reflects the current UI state
+                    // When toggled back to, simply restore the collection and focus
+                    // The collection was set and initial focus handled by updateControllerCollection after building
+                    // We just need to ensure the controller knows the current collection and focuses the last item
+                    // Rebuild the collection array as it might change (e.g., history status updates)
                     let allCardElements = [];
-                    if (html) { // Ensure html container exists
-                         // Find all card elements within the main container
-                         allCardElements = html.find('.hanime-card.card.selector').get(); // Use .get() to get native DOM elements
-                         console.log("HanimeComponent: Found", allCardElements.length, "card elements in DOM for collection.");
-                    } else {
-                         console.warn("HanimeComponent: html container is null in controller toggle. Cannot build collection.");
-                    }
-                    // --- End IMPORTANT ---
+                    CATEGORIES.forEach(category => {
+                        const categoryItems = this.items[category.key] || [];
+                        categoryItems.forEach(card => {
+                            const cardElement = card.render(true);
+                            if (cardElement) {
+                                allCardElements.push(cardElement);
+                            }
+                        });
+                    });
+                     Lampa.Controller.collectionSet(allCardElements);
 
-
-                    if (allCardElements.length === 0) {
-                         console.warn("HanimeComponent: No card elements found to set Controller collection in toggle.");
-                         // If no elements, set empty collection and maybe toggle back to menu or show message?
-                         // For now, just set empty collection. Lampa might handle focus loss.
-                         Lampa.Controller.collectionSet([]);
-                         // Lampa.Controller.toggle('menu'); // Optional: go back to menu if content is empty
-                         return; // Exit toggle if no elements
-                    }
-
-                    // Set the collection to ALL card elements found in the DOM
-                    Lampa.Controller.collectionSet(allCardElements);
-                    console.log("HanimeComponent: Controller collectionSet called with", allCardElements.length, "elements.");
-
-
-                    // Determine which element to focus:
-                    // 1. The last focused element if it exists and is still in the collection.
-                    // 2. The first element of the first category with data (found in DOM).
-                    // 3. The very first element in the combined collection as a last resort.
-                    let focusElement = null;
-                    if (last && last.element && allCardElements.includes(last.element)) {
-                        focusElement = last.element;
-                        console.log("HanimeComponent: Focusing last element:", focusElement);
-                    } else {
-                        // Find the first card element in the DOM
-                        if (allCardElements.length > 0) {
-                             focusElement = allCardElements[0];
-                             console.log("HanimeComponent: Focusing first element in combined collection as fallback.");
-                        }
-                    }
-
-                    // Set the focus
-                    if (focusElement) {
-                         Lampa.Controller.collectionFocus(focusElement);
-                         // Manually trigger scroll update for the initial focus
-                         // Pass the jQuery wrapped element
-                         _this.updateScrollToFocus($(focusElement));
-                    } else {
-                         console.warn("HanimeComponent: No element found to focus after setting collection.");
-                    }
-
-                    console.log("HanimeComponent: Controller collectionSet/Focus called in toggle().");
+                    // Focus the last element if known, otherwise let Controller focus default (first)
+                    Lampa.Controller.collectionFocus(last ? last.element : false);
+                    console.log("HanimeComponent: Controller collectionSet/Focus called in toggle(). Focused:", last ? last.element : 'default');
                 },
                 left: function () {
                     // Use Navigator for standard movement
@@ -558,37 +844,29 @@
                 },
                 right: function () {
                     // Use Navigator for standard movement
-                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.move('right')) {
-                         // Moved right successfully
-                    } else {
-                         console.log("HanimeComponent: Cannot move right, Navigator unavailable or no more elements.");
-                    }
+                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('right')) Navigator.move('right');
+                     else console.log("HanimeComponent: Cannot move right, Navigator unavailable or no more elements.");
                 },
                 up: function () {
                     // Lampa Controller handles UP/DOWN between lines automatically if collection is set correctly
-                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.move('up')) {
-                         // Moved up successfully
-                    } else {
-                         // If cannot move up within the collection, try toggling to the head (if exists)
-                         if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.toggle === 'function') Lampa.Controller.toggle('head');
-                         else console.log("HanimeComponent: Cannot move up, Navigator or head controller unavailable.");
-                    }
+                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('up')) Navigator.move('up');
+                    // If cannot move up within the collection, try toggling to the head (if exists)
+                    else if (window.Lampa && Lampa.Controller && typeof Lampa.Controller.toggle === 'function') Lampa.Controller.toggle('head');
+                    else console.log("HanimeComponent: Cannot move up, Navigator or head controller unavailable.");
                 },
                 down: function () {
                     // Lampa Controller handles UP/DOWN between lines automatically
-                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.move('down')) {
-                         // Moved down successfully
-                    } else {
-                         console.log("HanimeComponent: Cannot move down, Navigator unavailable or no elements below.");
-                    }
+                    if (window.Navigator && typeof Navigator.canmove === 'function' && typeof Navigator.move === 'function' && Navigator.canmove('down')) Navigator.move('down');
+                     else console.log("HanimeComponent: Cannot move down, Navigator unavailable or no elements below.");
                 },
                 back: this.back // Use the component's back method
             });
 
-            // Toggle the 'content' controller to activate it.
-            // The toggle function defined above will be executed.
-            Lampa.Controller.toggle('content');
-             console.log("HanimeComponent: Controller 'content' toggled. Initial focus attempt will happen in toggle().");
+            // We don't toggle 'content' here immediately.
+            // Toggling happens automatically by Activity.push after start() finishes.
+            // The actual collectionSet and initial focus will be handled by updateControllerCollection
+            // which is called after data is loaded and UI is built.
+             console.log("HanimeComponent: Controller 'content' added. Initial toggle will happen via Activity.");
         };
 
         this.pause = function () {
@@ -677,7 +955,9 @@
                  }
                  Lampa.Controller.remove('content');
                   console.log("HanimeComponent: Controller 'content' removed.");
-            } else console.warn("HanimeComponent: Lampa.Controller not available or remove method missing for cleanup in destroy.");
+            } else { // <-- Added missing braces here
+                console.warn("HanimeComponent: Lampa.Controller not available or remove method missing for cleanup in destroy.");
+            } // <-- Added missing braces here
 
             last = null; // Clear last focused element reference
             console.log("HanimeComponent: destroy() finished. All resources released.");
