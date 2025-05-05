@@ -957,8 +957,10 @@
                    return; // Exit if flag was already set
               }
 
+             // --- Add Standard Template Fallbacks FIRST ---
              console.log("Hanime Plugin: Adding standard template fallbacks using Lampa.Template.add...");
              // Use Lampa.Template.get to check existence instead of Lampa.Template.has
+             // Add these unconditionally if Lampa.Template.add is available, as they might be needed early
              if (Lampa.Template && typeof Lampa.Template.add === 'function' && typeof Lampa.Template.get === 'function') {
                  // Add templates if they don't exist (Lampa might provide them)
                  if (!Lampa.Template.get('card_vote_temp')) Lampa.Template.add('card_vote_temp', '<div class="card__vote"></div>');
@@ -970,6 +972,8 @@
              } else {
                   console.error("Hanime Plugin: Lampa.Template.add or get method not available. Cannot add template fallbacks.");
              }
+             // --- End Add Standard Template Fallbacks ---
+
 
              console.log("Hanime Plugin: Adding hanime-card template...");
              // Use Lampa.Template.get to check existence instead of Lampa.Template.has
