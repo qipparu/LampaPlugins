@@ -13,7 +13,7 @@
     var META_URL_TEMPLATE = API_BASE_URL + "/meta/movie/{id}.json";
     var PROXY_BASE_URL = "http://77.91.78.5:3000"; // Keep this if needed for proxying
 
-    // --- HanimeCard Class (Mostly Unchanged) ---
+    // --- HanimeCard Class ---
     // Represents a single card element and its data binding/event handling
     function HanimeCard(data, componentRef) {
         var processedData = {
@@ -180,11 +180,7 @@
                      imgElement[0].onerror = () => { console.error('Hanime Plugin: Image load error (basic):', src); imgElement.attr('src', './img/img_broken.svg'); };
                      imgElement.attr('src', src || './img/img_broken.svg');
                  }
-             } else {
-                 // If img already has a valid src (not placeholder), just ensure loaded class is there if needed
-                  // This might happen if the card was previously visible, scrolled out, and back in
-                  // cardElement.addClass('card--loaded'); // Uncomment if you always want this class present when img is not loading
-             }
+             } // If img already has src and not loading placeholder, do nothing
 
             // Update favorite icons whenever the card becomes visible
             this.updateFavoriteIcons();
@@ -701,11 +697,10 @@
                           if(window.Lampa && Lampa.Select && typeof Lampa.Select.update === 'function') {
                                // Fetch updated status for redrawing
                               const updatedStatus = (window.Lampa && Lampa.Favorite && typeof Lampa.Favorite.check === 'function') ? Lampa.Favorite.check(cardData) : {};
-                               // Update the checked status in the menu_favorite array or itemData
+                               // Update the checked status in the itemData object reference (assuming Lampa.Select uses references)
                                itemData.checked = updatedStatus[itemData.where];
-                               // Lampa.Select.update() might need the original items array or it might update based on itemData reference
-                               // Let's assume passing itemData is enough or it works on the original array reference
-                               Lampa.Select.update(); // Ask the selectbox to redraw items
+                               // Tell Lampa.Select to redraw its items based on the updated data
+                               Lampa.Select.update();
                           } else {
                                console.warn("HanimeMainScreenComponent: Lampa.Select or update method not available to redraw menu after onCheck.");
                           }
@@ -1121,12 +1116,8 @@
 
              // Check if the element is one of our cards within a row
              if (position.rowIndex !== -1) {
-                  // Check if the focus actually moved to a different row
-                  if (position.rowIndex !== this.focusedRowIndex) {
-                       console.log(`HanimeMainScreenComponent: Focus changed from row ${this.focusedRowIndex} to row ${position.rowIndex}.`);
-                  }
-                  // Check if the focus moved to a different item within the row
-                  if (position.itemIndex !== this.lastFocusedItemIndex || position.rowIndex !== this.focusedRowIndex) {
+                  // Check if the focus actually moved to a different row or item within the row
+                  if (position.rowIndex !== this.focusedRowIndex || position.itemIndex !== this.lastFocusedItemIndex) {
                        console.log(`HanimeMainScreenComponent: Focus changed to row ${position.rowIndex}, item ${position.itemIndex}.`);
                        // Update internal state with the new focus position
                        this.focusedRowIndex = position.rowIndex;
@@ -1150,6 +1141,10 @@
                         } else {
                             console.warn("HanimeMainScreenComponent: Could not get card instance to update on focus change.");
                         }
+                  } else {
+                       // Focus moved, but stayed on the *same* logically tracked item? (Shouldn't happen with Navigator.move unless something is off)
+                       // Could potentially still trigger update if needed, but maybe too frequent.
+                       // console.log("HanimeMainScreenComponent: Focus apparently remained on the same item.");
                   }
              } else {
                   console.warn("HanimeMainScreenComponent: onFocusChange called with element not found in any handled row:", element);
@@ -1163,7 +1158,8 @@
              console.log("HanimeMainScreenComponent: pause() called.");
              // Save the last focused item's position when pausing the activity.
              // This allows restoring focus when the activity is resumed (in start()).
-             if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content') {
+             // Check if the 'content' controller is enabled AND Lampa.Controller.item is a function before calling it.
+             if(window.Lampa && Lampa.Controller && typeof Lampa.Controller.enabled === 'function' && Lampa.Controller.enabled() && Lampa.Controller.enabled().name === 'content' && typeof Lampa.Controller.item === 'function') { // <-- Добавлена проверка typeof Lampa.Controller.item
                  let focusedElement = Lampa.Controller.item(); // Get the currently focused DOM element from the controller
                   if (focusedElement) {
                        // Find the position of the focused element within our rows
@@ -1174,13 +1170,13 @@
                            this.lastFocusedItemIndex = position.itemIndex;
                            console.log("HanimeMainScreenComponent: Activity paused. Saved focus position: row", this.focusedRowIndex, "item", this.lastFocusedItemIndex);
                        } else {
-                           console.warn("HanimeMainScreenComponent: Pause called, but focused element not found in rows. Position not saved.");
+                           console.warn("HanimeMainScreenComponent: Pause called, but focused element found by Controller.item not found in rows. Position not saved.");
                        }
                   } else {
-                       console.log("HanimeMainScreenComponent: Pause called, but no element currently focused by Controller.");
+                       console.log("HanimeMainScreenComponent: Pause called, but Controller.item() returned null/undefined (no element focused).");
                   }
              } else {
-                  console.log("HanimeMainScreenComponent: Pause called, but content controller not active. Last focus not saved.");
+                  console.log("HanimeMainScreenComponent: Pause called, but content controller not active or Controller.item not a function. Last focus not saved.");
              }
         };
 
