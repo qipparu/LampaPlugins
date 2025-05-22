@@ -36,7 +36,7 @@
         'title_wath': 'Смотрю',
         'menu_history': 'История',
         'title_action': 'Действие',
-        'home_button_text': 'Домой'
+        'home_button_text': 'Home'
     };
 
     const TAG_SLUG_MAP = {"ahegao":"Ахегао","bdsm":"БДСМ","big-boobs":"Большая грудь","blow-job":"Минет","bondage":"Бондаж","paizuri":"Пайзури","censored":"С цензурой","comedy":"Комедия","cosplay":"Косплей","creampie":"Крем-пай","dark-skin":"Темная кожа","facial":"На лицо","fantasy":"Фэнтези","filming":"Съемка","footjob":"Футджоб","futanari":"Футанари","gangbang":"Гэнгбэнг","glasses":"В очках","harem":"Гарем","hd":"HD","horror":"Ужасы","incest":"Инцест","inflation":"Раздувание","lactation":"Лактация","small-boobs":"Маленькая грудь","maids":"Горничные","masturbation":"Мастурбация","milf":"Милфы","mind-break":"Свести с ума","mind-control":"Контроль сознания","monster-girl":"Монстры (девушки)","neko":"Неко","ntr":"НТР","nurses":"Медсестры","orgy":"Оргия","plot":"С сюжетом","pov":"От первого лица","pregnant":"Беременные","public-sex":"Публичный секс","rape":"Изнасилование","reverse-rape":"Обратное изнасилование","scat":"Дерьмо","schoolgirls":"Школьницы","shota":"Шота","ero":"Эротика","swimsuit":"Купальник","teacher":"Учитель","tentacles":"Тентакли","threesome":"Тройничок","toys":"Игрушки","tsundere":"Цундере","ugly-bastard":"Противный ублюдок","uncensored":"Без цензуры","vanilla":"Классика","virgin":"Девственность","watersports":"Золотой дождь","x-ray":"X-ray","yuri":"Юри"};
@@ -109,6 +109,7 @@
         } else if (!this.isSearchMode && !currentCatalogConfig) {
              this.currentCatalogKey = 'new-releases'; currentCatalogConfig = API_CATALOG_CONFIG['new-releases'];
         }
+
         this.fetchData = function (page_to_fetch, onSuccess, onError, isAutoRetry = false) {
             if (!isAutoRetry) { auto_load_attempts = 0;}
             this.activity.loader(true);
@@ -132,15 +133,20 @@
                 this.activity.loader(false); let newMetasRaw = responseData.metas || [];
                 const uniqueNewMetas = [];
                 newMetasRaw.forEach(meta => {
+                    // ИЗМЕНЕНИЕ ЗДЕСЬ: Добавлена фильтрация meta.type !== "series"
                     if (meta && meta.id && !displayed_metas_ids.has(meta.id)) {
-                        uniqueNewMetas.push(meta);
-                        displayed_metas_ids.add(meta.id);
+                        if (meta.type !== "series") { // Фильтруем элементы с типом "series"
+                            uniqueNewMetas.push(meta);
+                            displayed_metas_ids.add(meta.id); // Добавляем ID только тех, которые будут отображены
+                        }
+                        // Если бы мы хотели добавлять все ID, даже отфильтрованных, то displayed_metas_ids.add(meta.id); было бы вне этого if
                     }
                 });
                 const isEmptyAfterFilter = newMetasRaw.length > 0 && uniqueNewMetas.length === 0;
                 if (onSuccess) onSuccess(uniqueNewMetas, newMetasRaw.length, isEmptyAfterFilter);
             }, (errStatus, errData) => { this.activity.loader(false); can_load_more = false; console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData); if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data))},false,{dataType:'json',timeout:20000});
         };
+
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
             const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated);
             if (isPaginating) {
@@ -443,7 +449,7 @@
                             stream_type_for_url = parts[0];
                             item_id_slug_for_url = parts[1];
                         } else {
-                            stream_type_for_url = "hentai";
+                            // stream_type_for_url = "hentai"; // Уже установлено по умолчанию
                             item_id_slug_for_url = cardDataForPlugin.id;
                         }
 
@@ -471,7 +477,7 @@
                                             title: cardDataForPlugin.name || cardDataForPlugin.title || 'Без названия',
                                             poster: cardDataForPlugin.poster || '', id: cardDataForPlugin.id,
                                             name: cardDataForPlugin.name || cardDataForPlugin.title, 
-                                            type: cardDataForPlugin.type, 
+                                            type: cardDataForPlugin.type, // Тип здесь должен быть 'tv' или 'movie' для Lampa.Player
                                             source: PLUGIN_SOURCE_KEY
                                         };
                                         if (stream_detail.url) {
