@@ -70,16 +70,17 @@
         const updateFavoriteIcons = () => {
             item.find('.lmeshm-card__fav-icons').remove();
             const fc = $('<div class="lmeshm-card__fav-icons"></div>');
-            const cdf = {
-                id: data.id, 
-                title: data.name, 
-                name: data.name, 
-                poster: data.poster, 
-                year: data.year || '', 
-                type: data.type === "series" ? "tv" : "movie", 
-                original_name: data.original_name || '', 
+            const cdf = { // Object stored by Lampa for Fav/History
+                id: data.id,
+                title: data.name,
+                name: data.name,
+                poster: data.poster,
+                year: data.year || '',
+                type: data.type === "series" ? "tv" : "movie",
+                original_name: data.original_name || '',
                 source: PLUGIN_SOURCE_KEY,
-                description: data.description || '' // Store description for favorites/history
+                description: data.description || '',
+                posterShape: data.posterShape || 'poster' // MODIFIED: Added posterShape
             };
             const st = (Lampa.Favorite && typeof Lampa.Favorite.check === 'function' ? Lampa.Favorite.check(cdf) : {}) || {};
             if (st.book) fc.append($('<div>').addClass('card__icon icon--book'));
@@ -143,11 +144,10 @@
                 this.activity.loader(false); let newMetasRaw = responseData.metas || [];
                 const uniqueNewMetas = [];
                 newMetasRaw.forEach(meta => {
-                    // ИЗМЕНЕНИЕ ЗДЕСЬ: Добавлена фильтрация meta.type !== "series"
                     if (meta && meta.id && !displayed_metas_ids.has(meta.id)) {
-                        if (meta.type !== "series") { // Фильтруем элементы с типом "series"
+                        if (meta.type !== "series") { 
                             uniqueNewMetas.push(meta);
-                            displayed_metas_ids.add(meta.id); // Добавляем ID только тех, которые будут отображены
+                            displayed_metas_ids.add(meta.id); 
                         }
                     }
                 });
@@ -180,11 +180,11 @@
             if (metasToAppend.length > 0) auto_load_attempts = 0;
 
             metasToAppend.forEach(meta => {
-                const card = new PluginCard(meta);
+                const card = new PluginCard(meta); // meta from API contains posterShape
                 const card_render = card.render();
                 card_render.on("hover:focus", () => { last_focused_card_element = card_render[0]; scroll.update(last_focused_card_element, true);});
                 card_render.on("hover:enter", () => {
-                    const cardFlaskData = card.getRawData();
+                    const cardFlaskData = card.getRawData(); // cardFlaskData will have posterShape from meta
                     let item_id_slug_for_url = cardFlaskData.id;
                     let stream_type_for_url = "hentai";
                     if (cardFlaskData.id.includes('::')) {
@@ -201,23 +201,27 @@
                         Lampa.Select.show({title:getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),items:pi,onBack:()=>Lampa.Controller.toggle('content'),
                         onSelect:si=>{
                             const sd=si.stream_details;
-                            const pld = {
+                            const pld = { // Object passed to Lampa.Player.play
                                 title: cardFlaskData.name || 'Без названия',
                                 poster: cardFlaskData.poster || '',
                                 id: cardFlaskData.id,
                                 name: cardFlaskData.name,
                                 type: cardFlaskData.type === 'series' ? 'tv' : 'movie',
                                 source: PLUGIN_SOURCE_KEY,
-                                description: cardFlaskData.description || '' // MODIFIED: Added description
+                                description: cardFlaskData.description || '',
+                                posterShape: cardFlaskData.posterShape || 'poster' // MODIFIED: Added posterShape
                             };
+                            console.log("Plugin: Playing directly. Player data (pld):", JSON.stringify(pld, null, 2));
+
                             if(sd.url){
                                 let vu=sd.url; let uvp=true;
                                 if(uvp){vu=PROXY_FOR_EXTERNAL_URLS+encodeURIComponent(vu);if(Lampa.Noty)Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500})}
                                 pld.url=vu;
                                 if(Lampa.Timeline&&typeof Lampa.Timeline.view==='function')pld.timeline=Lampa.Timeline.view(pld.id)||{};
                                 if(Lampa.Timeline&&typeof Lampa.Timeline.update==='function')Lampa.Timeline.update(pld);
-                                Lampa.Player.play(pld);Lampa.Player.playlist([pld]);
-                                if(Lampa.Favorite&&typeof Lampa.Favorite.add==='function')Lampa.Favorite.add('history',pld); // pld now contains description
+                                Lampa.Player.play(pld);
+                                Lampa.Player.playlist([pld]);
+                                if(Lampa.Favorite&&typeof Lampa.Favorite.add==='function')Lampa.Favorite.add('history',pld); 
                                 card.updateIcons();
                             }
                             else if(sd.externalUrl){let uo=sd.externalUrl;uo=PROXY_FOR_EXTERNAL_URLS+encodeURIComponent(uo);if(Lampa.Noty)Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});Lampa.Utils.openLink(uo)}
@@ -227,8 +231,8 @@
                     }, (es,ed)=>{this.activity.loader(false);console.error("P:Err fetch streams",es,ed);Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error))},false, requestOptions);
                 });
                 card_render.on('hover:long', () => {
-                    const oD = card.getRawData();
-                    const cdF = { // This is the object Lampa stores
+                    const oD = card.getRawData(); // oD will have posterShape from meta
+                    const cdF = { // Object stored by Lampa for Fav/History
                         id: oD.id,
                         title: oD.name,
                         name: oD.name,
@@ -237,7 +241,8 @@
                         type: oD.type === 'series' ? 'tv' : 'movie',
                         original_name: oD.original_name || '',
                         source: PLUGIN_SOURCE_KEY,
-                        description: oD.description || '' // MODIFIED: Added description
+                        description: oD.description || '',
+                        posterShape: oD.posterShape || 'poster' // MODIFIED: Added posterShape
                     };
                     const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
                     const mn = [
@@ -249,7 +254,7 @@
                     Lampa.Select.show({
                         title: getLangText('title_action', CATALOG_TITLES_FALLBACK.title_action), items: mn,
                         onBack: () => Lampa.Controller.toggle('content'),
-                        onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); }, // cdF now contains description
+                        onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); }, 
                         onSelect: () => { Lampa.Select.close(); Lampa.Controller.toggle('content'); }
                     });
                 });
@@ -438,7 +443,7 @@
 
                 Lampa.Activity.push = function(new_activity_params) {
                     let isOurCard = false;
-                    let cardDataForPlugin = null;
+                    let cardDataForPlugin = null; // This will hold the data, potentially with posterShape
 
                     if (new_activity_params && new_activity_params.params && new_activity_params.params.source === PLUGIN_SOURCE_KEY) {
                         isOurCard = true;
@@ -492,22 +497,25 @@
                                     onBack: () => {
                                         if (Lampa.Controller.own) Lampa.Controller.toggle('content'); 
                                         else if (currentActivity && typeof currentActivity.activity == 'object' && currentActivity.activity.component == 'player_details') {
-                                            Lampa.Activity.back(); // Common for going back from player details
+                                            Lampa.Activity.back(); 
                                         } else {
-                                            Lampa.Controller.toggle('content'); // Fallback
+                                            Lampa.Controller.toggle('content'); 
                                         }
                                     },
                                     onSelect: (selected_stream_item) => {
                                         const stream_detail = selected_stream_item.stream_details;
-                                        const pld_for_player = { // This object is passed to Lampa.Player
+                                        const pld_for_player = { // Object passed to Lampa.Player.play
                                             title: cardDataForPlugin.name || cardDataForPlugin.title || 'Без названия',
                                             poster: cardDataForPlugin.poster || '',
                                             id: cardDataForPlugin.id,
                                             name: cardDataForPlugin.name || cardDataForPlugin.title, 
                                             type: cardDataForPlugin.type, 
                                             source: PLUGIN_SOURCE_KEY,
-                                            description: cardDataForPlugin.description || '' // MODIFIED: Added description
+                                            description: cardDataForPlugin.description || '',
+                                            posterShape: cardDataForPlugin.posterShape || 'poster' // MODIFIED: Added posterShape
                                         };
+                                        console.log("Plugin: Playing from Lampa activity. Player data (pld_for_player):", JSON.stringify(pld_for_player, null, 2));
+
                                         if (stream_detail.url) {
                                             let video_url = stream_detail.url;
                                             if (true) { 
