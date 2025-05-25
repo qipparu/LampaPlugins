@@ -57,6 +57,9 @@
         this.render = function () { return item; };
         this.destroy = function () { item.remove(); };
         this.getRawData = function () { return data; };
+        this.getDisplayTitle = function() { 
+            return userLang === 'ru' ? (pr.russian || pr.name) : (pr.name || pr.japanese);
+        }
     }
 
     // --- HanimeComponent ---
@@ -81,10 +84,23 @@
         const currentCategoryKey = (this.activity.params && this.activity.params.category_key) ? 
                                      this.activity.params.category_key : 'all';
         
-        const getTranslatedTitle = (lang_key, fallback_cat_key, default_text) => {
+        const getTranslatedTitle = (lang_key, fallback_cat_key_or_text, default_text, replacements = {}) => {
             let title = Lampa.Lang && typeof Lampa.Lang.translate === 'function' ? Lampa.Lang.translate(lang_key) : null;
-            if (!title || title === lang_key) { // Если перевод не найден или равен ключу
-                title = HANIME_CAT_TITLES[fallback_cat_key] || default_text || lang_key;
+            if (!title || title === lang_key) {
+                if (typeof HANIME_CAT_TITLES[fallback_cat_key_or_text] !== 'undefined') {
+                    title = HANIME_CAT_TITLES[fallback_cat_key_or_text];
+                } else if (typeof fallback_cat_key_or_text === 'string') {
+                    title = fallback_cat_key_or_text;
+                } else {
+                    title = default_text || lang_key;
+                }
+            }
+            if (title && typeof title === 'string') {
+                for (const key in replacements) {
+                    if (replacements.hasOwnProperty(key)) {
+                         title = title.replace(new RegExp(`{${key}}`, 'g'), replacements[key]);
+                    }
+                }
             }
             return title;
         };
@@ -158,11 +174,11 @@
             }
 
             metasToAppend.forEach(meta => {
-                const card = new HanimeCard(meta, userLang);
-                const card_render = card.render();
+                const card_instance = new HanimeCard(meta, userLang); 
+                const card_render = card_instance.render();
                 card_render.on("hover:focus", () => { last_focused_card_element = card_render[0]; scroll.update(last_focused_card_element, true);});
                 card_render.on("hover:enter", () => {
-                    const originalData = card.getRawData();
+                    const originalData = card_instance.getRawData();
                     this.activity.loader(true);
                     const streamP = new Promise((res, rej) => network.native(HANIME_STREAM_TPL.replace('{id}', originalData.id), res, rej, false, { dataType: 'json', timeout: 10000 }));
                     const metaP = Promise.resolve({ meta: originalData });
@@ -184,13 +200,19 @@
                             if (playerObj.url && Lampa.Player?.play && Lampa.Player?.playlist) {
                                 Lampa.Player.play(playerObj); Lampa.Player.playlist([playerObj]);
                                 if (Lampa.Favorite && typeof Lampa.Favorite.add === 'function') { Lampa.Favorite.add('history', playerObj); }
-                                card.updateIcons();
+                                card_instance.updateIcons();
                             } else { Lampa.Noty.show(playerObj.url ? getTranslatedTitle('hanime_error_player', '', 'Плеер недоступен.') : getTranslatedTitle('hanime_error_stream_url', '', 'Нет ссылки на поток.')); }
                         } else { Lampa.Noty.show(getTranslatedTitle('hanime_error_streams_not_found', '', 'Потоки не найдены.')); }
                     }).catch(error => { this.activity.loader(false); Lampa.Noty.show(getTranslatedTitle('hanime_error_details_flat', '', 'Ошибка загрузки деталей.')); });
                 });
                 card_render.on('hover:long', () => {
-                    const originalData = card.getRawData();
+                    const originalData = card_instance.getRawData();
+                    const displayTitleOriginal = card_instance.getDisplayTitle(); 
+                    
+                    // Убираем цифры из названия для поиска и для отображения в пункте меню
+                    const titleForMenuDisplay = displayTitleOriginal.replace(/\d+/g, '').trim();
+                    const searchTermForPlugin = titleForMenuDisplay; // Уже без цифр
+
                     const cardDataForFav = {
                         id: originalData.id, title: originalData.name || originalData.title, poster: originalData.poster_path || originalData.poster || originalData.img,
                         name: originalData.name || originalData.title, 
@@ -198,29 +220,66 @@
                         type: originalData.first_air_date ? 'tv' : 'movie', original_name: originalData.original_name
                     };
                     const st = (Lampa.Favorite && typeof Lampa.Favorite.check === 'function' ? Lampa.Favorite.check(cardDataForFav) : {}) || {};
+                    
                     const menu = [
+                        { 
+                            title: getTranslatedTitle('lmehanime_action_search_this_other_catalog', 'Искать "{title}" в другом каталоге', '', {title: titleForMenuDisplay}), // Используем название без цифр
+                            action_type: 'search_this_other_catalog',
+                            search_term: searchTermForPlugin // Используем название без цифр
+                        },
                         { title: getTranslatedTitle('title_book', '', 'Запланировано'), where: 'book', checkbox: true, checked: st.book },
                         { title: getTranslatedTitle('title_like', '', 'Нравится'), where: 'like', checkbox: true, checked: st.like },
                         { title: getTranslatedTitle('title_wath', '', 'Смотрю'), where: 'wath', checkbox: true, checked: st.wath },
-                        { title: getTranslatedTitle('menu_history', '', 'История'), where: 'history', checkbox: true, checked: st.history },
+                        { title: getTranslatedTitle('menu_history', '', 'История'), where: 'history', checkbox: true, checked: st.history }
                     ];
+
                     Lampa.Select.show({
                         title: getTranslatedTitle('title_action', '', 'Действие'), items: menu,
                         onBack: () => Lampa.Controller.toggle('content'),
-                        onCheck: (item) => {
-                            if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(item.where, cardDataForFav);
-                            card.updateIcons();
+                        onCheck: (item) => { 
+                            if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function' && item.where) {
+                                Lampa.Favorite.toggle(item.where, cardDataForFav);
+                                card_instance.updateIcons();
+                            }
                         },
-                        onSelect: () => { Lampa.Select.close(); Lampa.Controller.toggle('content'); },
+                        onSelect: (selectedItem) => { 
+                            if (selectedItem.action_type === 'search_this_other_catalog') {
+                                Lampa.Select.close(); 
+                                const searchTerm = selectedItem.search_term; // Это уже будет название без цифр
+                                if (searchTerm) {
+                                    let searchResultsTitle = "Поиск: " + searchTerm; 
+                                    if (Lampa.Lang && typeof Lampa.Lang.translate === 'function') {
+                                        const hhubTitleKey = 'plugin_search_results_title'; 
+                                        let translatedHHubTitle = Lampa.Lang.translate(hhubTitleKey);
+                                        if (translatedHHubTitle && translatedHHubTitle !== hhubTitleKey) {
+                                            searchResultsTitle = translatedHHubTitle.replace('{query}', searchTerm);
+                                        }
+                                    }
+
+                                    Lampa.Activity.push({
+                                        component: 'my_plugin_catalog', 
+                                        title: searchResultsTitle,
+                                        params: {
+                                            search_query: searchTerm 
+                                        }
+                                    });
+                                } else {
+                                    Lampa.Controller.toggle('content'); 
+                                }
+                            } else if (!selectedItem.where && !selectedItem.action_type) { 
+                                Lampa.Select.close();
+                                Lampa.Controller.toggle('content');
+                            }
+                        },
                     });
                 });
                 body.append(card_render);
-                items_instances.push(card);
-                setTimeout(() => card.updateIcons(), 50);
+                items_instances.push(card_instance);
+                setTimeout(() => card_instance.updateIcons(), 50);
             });
 
             if (!last_focused_card_element && items_instances.length > 0) {
-                const firstVisibleCard = items_instances.find(card_instance => $(card_instance.render()).is(':visible'));
+                const firstVisibleCard = items_instances.find(ci => $(ci.render()).is(':visible'));
                 if (firstVisibleCard) last_focused_card_element = firstVisibleCard.render()[0];
             }
             this.activity.toggle();
@@ -254,7 +313,7 @@
                         }
                     } else {
                          const catTitle = getTranslatedTitle('lmehanime_cat_' + currentCategoryKey, currentCategoryKey, "каталог");
-                         this.empty((getTranslatedTitle('hanime_empty_category', '', "Категория \"{category}\" пуста.")).replace('{category}', catTitle));
+                         this.empty((getTranslatedTitle('hanime_empty_category', '', "Категория \"{category}\" пуста.", {category: catTitle})));
                     }
                 }, 
                 (errorMsg) => { this.empty(errorMsg); }
@@ -370,7 +429,6 @@
             if (scroll) scroll.destroy(); 
             this.clear(); 
             html.remove(); 
-            // allFetchedData больше не используется глобально в компоненте
             items_instances = null; 
             displayed_metas_ids = null; 
             network = null; 
@@ -388,7 +446,7 @@
             const criticalMissing = [];
             if (!window.Lampa) criticalMissing.push("window.Lampa"); if (!window.$) criticalMissing.push("window.$");
             if (window.Lampa) {
-                const deps = ["Template", "Component", "Activity", "Controller", "Scroll", "Reguest", "Favorite", "Timeline", "Noty", "Select", "Lang", "Player", "Empty", "Utils"];
+                const deps = ["Template", "Component", "Activity", "Controller", "Scroll", "Reguest", "Favorite", "Timeline", "Noty", "Select", "Lang", "Player", "Empty", "Utils"]; 
                 deps.forEach(dep => { if (!Lampa[dep]) criticalMissing.push("Lampa." + dep); });
             }
             if (criticalMissing.length > 0) {
@@ -434,7 +492,8 @@
                     hanime_error_streams_not_found: "Потоки не найдены.", 
                     hanime_error_details_flat: "Ошибка загрузки деталей для плеера.", 
                     title_book: 'Запланировано', title_like: 'Нравится', 
-                    title_wath: 'Смотрю', menu_history: 'История', title_action: 'Действие'
+                    title_wath: 'Смотрю', menu_history: 'История', title_action: 'Действие',
+                    lmehanime_action_search_this_other_catalog: 'Искать "{title}" в другом каталоге'
                 });
             }
             Lampa.Component.add('lmehanime_catalog', HanimeComponent);
