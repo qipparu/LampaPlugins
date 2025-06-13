@@ -129,6 +129,14 @@
             }
 
             network.clear();
+            
+            // Prepare request options and add cookie if present
+            let fetchDataRequestOptions = {dataType:'json', timeout:20000};
+            const savedCookie = localStorage.getItem('my_plugin_cookie');
+            if (savedCookie) {
+                fetchDataRequestOptions.headers = {'X-Custom-Cookie': savedCookie};
+            }
+
             network.native(urlToFetch, (responseData) => {
                 this.activity.loader(false); let newMetasRaw = responseData.metas || [];
                 const uniqueNewMetas = [];
@@ -144,7 +152,7 @@
                 });
                 const isEmptyAfterFilter = newMetasRaw.length > 0 && uniqueNewMetas.length === 0;
                 if (onSuccess) onSuccess(uniqueNewMetas, newMetasRaw.length, isEmptyAfterFilter);
-            }, (errStatus, errData) => { this.activity.loader(false); can_load_more = false; console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData); if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data))},false,{dataType:'json',timeout:20000});
+            }, (errStatus, errData) => { this.activity.loader(false); can_load_more = false; console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData); if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data))},false, fetchDataRequestOptions); // Pass updated options
         };
 
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
@@ -477,12 +485,12 @@
                                             title: cardDataForPlugin.name || cardDataForPlugin.title || 'Без названия',
                                             poster: cardDataForPlugin.poster || '', id: cardDataForPlugin.id,
                                             name: cardDataForPlugin.name || cardDataForPlugin.title, 
-                                            type: cardDataForPlugin.type, // Тип здесь должен быть 'tv' или 'movie' для Lampa.Player
+                                            type: cardDataForPlugin.type === "series" ? "tv" : "movie", // Ensure correct type for Lampa.Player
                                             source: PLUGIN_SOURCE_KEY
                                         };
                                         if (stream_detail.url) {
                                             let video_url = stream_detail.url;
-                                            if (true) { 
+                                            if (true) { // Assuming proxy is always desired for these URLs
                                                 video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
                                                 if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
                                             }
