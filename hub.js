@@ -6,7 +6,7 @@
     const API_CATALOG_CONFIG = {
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
-        'random': { path: "/catalog/random", paginated: false },
+        'random': { path: "/catalog/random", paginated: true }, // Оставляем пагинируемой
     };
     const API_SEARCH_ENDPOINT = "/search";
 
@@ -36,11 +36,11 @@
         'title_wath': 'Смотрю',
         'menu_history': 'История',
         'title_action': 'Действие',
-        'home_button_text': 'Home'
+        'home_button_text': 'Домой'
     };
 
     const TAG_SLUG_MAP = {"ahegao":"Ахегао","bdsm":"БДСМ","big-boobs":"Большая грудь","blow-job":"Минет","bondage":"Бондаж","paizuri":"Пайзури","censored":"С цензурой","comedy":"Комедия","cosplay":"Косплей","creampie":"Крем-пай","dark-skin":"Темная кожа","facial":"На лицо","fantasy":"Фэнтези","filming":"Съемка","footjob":"Футджоб","futanari":"Футанари","gangbang":"Гэнгбэнг","glasses":"В очках","harem":"Гарем","hd":"HD","horror":"Ужасы","incest":"Инцест","inflation":"Раздувание","lactation":"Лактация","small-boobs":"Маленькая грудь","maids":"Горничные","masturbation":"Мастурбация","milf":"Милфы","mind-break":"Свести с ума","mind-control":"Контроль сознания","monster-girl":"Монстры (девушки)","neko":"Неко","ntr":"НТР","nurses":"Медсестры","orgy":"Оргия","plot":"С сюжетом","pov":"От первого лица","pregnant":"Беременные","public-sex":"Публичный секс","rape":"Изнасилование","reverse-rape":"Обратное изнасилование","scat":"Дерьмо","schoolgirls":"Школьницы","shota":"Шота","ero":"Эротика","swimsuit":"Купальник","teacher":"Учитель","tentacles":"Тентакли","threesome":"Тройничок","toys":"Игрушки","tsundere":"Цундере","ugly-bastard":"Противный ублюдок","uncensored":"Без цензуры","vanilla":"Классика","virgin":"Девственность","watersports":"Золотой дождь","x-ray":"X-ray","yuri":"Юри"};
-    const ITEMS_PER_API_REQUEST = 20;
+    const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
     const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5:3000/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
@@ -94,7 +94,7 @@
                         <div class='plugin__home simple-button simple-button--filter selector'>${getLangText('home_button_text', CATALOG_TITLES_FALLBACK.home_button_text)}</div>
                         <div class='plugin__filter simple-button simple-button--filter selector'>${getLangText('filter_title', CATALOG_TITLES_FALLBACK.filter_title)}</div>
                         <div class='plugin__search simple-button simple-button--filter selector'>${getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title)}</div>
-                        <div class='plugin__cookie simple-button simple-button--filter selector'>Cookie</div>
+                        <div class='plugin__cookie simple-button simple-button--filter selector'>Авторизация Cookie</div>
                        </div>`);
         const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
         let last_focused_card_element = null;
@@ -111,56 +111,106 @@
         }
 
         this.fetchData = function (page_to_fetch, onSuccess, onError, isAutoRetry = false) {
-            if (!isAutoRetry) { auto_load_attempts = 0;}
+            if (!isAutoRetry) { auto_load_attempts = 0; }
             this.activity.loader(true);
-            let urlToFetch;
 
-            if (this.isSearchMode) {
-                urlToFetch = FLASK_API_BASE + API_SEARCH_ENDPOINT + `?q=${encodeURIComponent(this.searchQuery)}&page=${page_to_fetch}`;
-            } else if (isTagCatalog) {
-                urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
-            } else if (currentCatalogConfig && currentCatalogConfig.path) {
-                urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
-                if (currentCatalogConfig.paginated) { urlToFetch += `?page=${page_to_fetch}`; }
-            } else { this.activity.loader(false); can_load_more = false; if (onSuccess) onSuccess([], 0); return;}
+            // Определяем, сколько запросов нужно сделать
+            const isRandomCategory = this.currentCatalogKey === 'random';
+            const requestCount = isRandomCategory ? 2 : 1;
+            const requests = [];
 
-            if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
-                this.activity.loader(false); can_load_more = false; if (onSuccess) onSuccess([], 0); return;
+            for (let i = 0; i < requestCount; i++) {
+                let urlToFetch;
+
+                if (this.isSearchMode) {
+                    urlToFetch = FLASK_API_BASE + API_SEARCH_ENDPOINT + `?q=${encodeURIComponent(this.searchQuery)}&page=${page_to_fetch}`;
+                } else if (isTagCatalog) {
+                    urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
+                } else if (currentCatalogConfig && currentCatalogConfig.path) {
+                    urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
+                    // Для обычных категорий добавляем страницу, для случайной - нет
+                    if (currentCatalogConfig.paginated && !isRandomCategory) {
+                        urlToFetch += `?page=${page_to_fetch}`;
+                    }
+                } else {
+                    // Если URL не удалось сформировать, пропускаем
+                    continue;
+                }
+
+                if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
+                    continue; // Пропускаем для непагинируемых после 1-й страницы
+                }
+
+                let fetchDataRequestOptions = { dataType: 'json', timeout: 20000 };
+                const savedCookie = localStorage.getItem('my_plugin_cookie');
+                if (savedCookie) {
+                    fetchDataRequestOptions.headers = { 'X-Custom-Cookie': savedCookie };
+                }
+
+                // Создаем промис для каждого запроса
+                const requestPromise = new Promise((resolve, reject) => {
+                    // Используем новый экземпляр network для каждого запроса, чтобы избежать конфликтов
+                    const singleRequestNetwork = new Lampa.Reguest();
+                    singleRequestNetwork.native(urlToFetch,
+                        (responseData) => resolve(responseData.metas || []), 
+                        (errStatus, errData) => {
+                            console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData);
+                            // В случае ошибки возвращаем пустой массив, чтобы не ломать Promise.all
+                            resolve([]); 
+                        }, 
+                        false, 
+                        fetchDataRequestOptions
+                    );
+                });
+                requests.push(requestPromise);
             }
 
-            network.clear();
-            
-            // Prepare request options and add cookie if present
-            let fetchDataRequestOptions = {dataType:'json', timeout:20000};
-            const savedCookie = localStorage.getItem('my_plugin_cookie');
-            if (savedCookie) {
-                fetchDataRequestOptions.headers = {'X-Custom-Cookie': savedCookie};
+            if (requests.length === 0) {
+                this.activity.loader(false);
+                can_load_more = false;
+                if (onSuccess) onSuccess([], 0);
+                return;
             }
 
-            network.native(urlToFetch, (responseData) => {
-                this.activity.loader(false); let newMetasRaw = responseData.metas || [];
+            // Выполняем все запросы параллельно
+            Promise.all(requests).then(results => {
+                this.activity.loader(false);
+                
+                // Объединяем результаты всех запросов в один массив
+                const combinedMetasRaw = [].concat(...results);
                 const uniqueNewMetas = [];
-                newMetasRaw.forEach(meta => {
-                    // ИЗМЕНЕНИЕ ЗДЕСЬ: Добавлена фильтрация meta.type !== "series"
+
+                combinedMetasRaw.forEach(meta => {
                     if (meta && meta.id && !displayed_metas_ids.has(meta.id)) {
-                        if (meta.type !== "series") { // Фильтруем элементы с типом "series"
+                        if (meta.type !== "series") {
                             uniqueNewMetas.push(meta);
-                            displayed_metas_ids.add(meta.id); // Добавляем ID только тех, которые будут отображены
+                            displayed_metas_ids.add(meta.id);
                         }
-                        // Если бы мы хотели добавлять все ID, даже отфильтрованных, то displayed_metas_ids.add(meta.id); было бы вне этого if
                     }
                 });
-                const isEmptyAfterFilter = newMetasRaw.length > 0 && uniqueNewMetas.length === 0;
-                if (onSuccess) onSuccess(uniqueNewMetas, newMetasRaw.length, isEmptyAfterFilter);
-            }, (errStatus, errData) => { this.activity.loader(false); can_load_more = false; console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData); if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data))},false, fetchDataRequestOptions); // Pass updated options
+
+                const isEmptyAfterFilter = combinedMetasRaw.length > 0 && uniqueNewMetas.length === 0;
+                if (onSuccess) onSuccess(uniqueNewMetas, combinedMetasRaw.length, isEmptyAfterFilter);
+
+            }).catch(error => {
+                this.activity.loader(false);
+                can_load_more = false;
+                console.error('Plugin: Error in Promise.all for fetching data', error);
+                if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data));
+            });
         };
 
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
             const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated);
-            if (isPaginating) {
+            
+            if (this.currentCatalogKey === 'random') {
+                can_load_more = true;
+            } else if (isPaginating) {
                 if (originalApiBatchLength === 0 && current_api_page > 1) { can_load_more = false; }
                 if (originalApiBatchLength < ITEMS_PER_API_REQUEST && current_api_page >= 1) { can_load_more = false;}
-            } else { can_load_more = false; }
+            } else {
+                can_load_more = false;
+            }
 
             if (isEmptyAfterFilter && can_load_more && auto_load_attempts < MAX_AUTO_LOAD_ATTEMPTS) {
                 auto_load_attempts++; this.loadNextPage(true); return;
@@ -240,7 +290,6 @@
         };
         this.loadNextPage = function(isAutoRetry = false) {
             if (!can_load_more || this.activity.loader()) return;
-            if (!this.isSearchMode && !isTagCatalog && (this.currentCatalogKey === 'all' || (currentCatalogConfig && !currentCatalogConfig.paginated)) ) {can_load_more = false; return;}
             if (!isAutoRetry) auto_load_attempts = 0;
             current_api_page++;
             this.fetchData(current_api_page, (newMetas, originalLength, isEmptyAfterFilter) => { this.appendCardsToDOM(newMetas, originalLength, isEmptyAfterFilter); }, () => { can_load_more = false; }, isAutoRetry);
@@ -412,17 +461,11 @@
             });
             if (Lampa.Lang?.add) { Lampa.Lang.add(lang_packs); }
 
-
-            // --- ПЕРЕХВАТ Lampa.Activity.push ---
             if (Lampa.Activity && typeof Lampa.Activity.push === 'function') {
                 const originalLampaActivityPush = Lampa.Activity.push;
-
                 Lampa.Activity.push = function(new_activity_params) {
-                    // console.log("Lampa.Activity.push called with:", JSON.parse(JSON.stringify(new_activity_params)));
-
                     let isOurCard = false;
                     let cardDataForPlugin = null;
-
                     if (new_activity_params && new_activity_params.params && new_activity_params.params.source === PLUGIN_SOURCE_KEY) {
                         isOurCard = true;
                         cardDataForPlugin = new_activity_params.params;
@@ -437,15 +480,10 @@
                          cardDataForPlugin = new_activity_params;
                     }
 
-
                     if (isOurCard && cardDataForPlugin) {
-                        // console.log("Plugin: Intercepted Lampa.Activity.push for our card:", cardDataForPlugin);
-                        
                         const currentActivity = Lampa.Activity.active();
                         if (currentActivity && typeof currentActivity.loader === 'function') {
                             currentActivity.loader(true);
-                        } else {
-                            console.warn("Plugin: Could not get active activity or loader function for Lampa.Activity.push intercept.");
                         }
 
                         let network_custom = new Lampa.Reguest();
@@ -457,7 +495,6 @@
                             stream_type_for_url = parts[0];
                             item_id_slug_for_url = parts[1];
                         } else {
-                            // stream_type_for_url = "hentai"; // Уже установлено по умолчанию
                             item_id_slug_for_url = cardDataForPlugin.id;
                         }
 
@@ -485,12 +522,12 @@
                                             title: cardDataForPlugin.name || cardDataForPlugin.title || 'Без названия',
                                             poster: cardDataForPlugin.poster || '', id: cardDataForPlugin.id,
                                             name: cardDataForPlugin.name || cardDataForPlugin.title, 
-                                            type: cardDataForPlugin.type === "series" ? "tv" : "movie", // Ensure correct type for Lampa.Player
+                                            type: cardDataForPlugin.type === "series" ? "tv" : "movie",
                                             source: PLUGIN_SOURCE_KEY
                                         };
                                         if (stream_detail.url) {
                                             let video_url = stream_detail.url;
-                                            if (true) { // Assuming proxy is always desired for these URLs
+                                            if (true) {
                                                 video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
                                                 if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
                                             }
