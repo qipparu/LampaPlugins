@@ -6,7 +6,7 @@
     const API_CATALOG_CONFIG = {
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
-        'random': { path: "/catalog/random", paginated: true }, // Оставляем пагинируемой
+        'random': { path: "/catalog/random", paginated: true },
     };
     const API_SEARCH_ENDPOINT = "/search";
 
@@ -84,6 +84,7 @@
     // --- PluginComponent ---
     function PluginComponent(object) {
         this.activity = object;
+        const PRELOAD_THRESHOLD = 12; // Начать загрузку, когда до конца осталось 12 или меньше элементов
         let network = new Lampa.Reguest();
         let scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         let items_instances = []; let displayed_metas_ids = new Set();
@@ -112,9 +113,11 @@
 
         this.fetchData = function (page_to_fetch, onSuccess, onError, isAutoRetry = false) {
             if (!isAutoRetry) { auto_load_attempts = 0; }
-            this.activity.loader(true);
+            
+            if (page_to_fetch === 1) {
+                this.activity.loader(true);
+            }
 
-            // Определяем, сколько запросов нужно сделать
             const isRandomCategory = this.currentCatalogKey === 'random';
             const requestCount = isRandomCategory ? 2 : 1;
             const requests = [];
@@ -128,17 +131,15 @@
                     urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
                 } else if (currentCatalogConfig && currentCatalogConfig.path) {
                     urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
-                    // Для обычных категорий добавляем страницу, для случайной - нет
                     if (currentCatalogConfig.paginated && !isRandomCategory) {
                         urlToFetch += `?page=${page_to_fetch}`;
                     }
                 } else {
-                    // Если URL не удалось сформировать, пропускаем
                     continue;
                 }
 
                 if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
-                    continue; // Пропускаем для непагинируемых после 1-й страницы
+                    continue;
                 }
 
                 let fetchDataRequestOptions = { dataType: 'json', timeout: 20000 };
@@ -147,15 +148,12 @@
                     fetchDataRequestOptions.headers = { 'X-Custom-Cookie': savedCookie };
                 }
 
-                // Создаем промис для каждого запроса
                 const requestPromise = new Promise((resolve, reject) => {
-                    // Используем новый экземпляр network для каждого запроса, чтобы избежать конфликтов
                     const singleRequestNetwork = new Lampa.Reguest();
                     singleRequestNetwork.native(urlToFetch,
                         (responseData) => resolve(responseData.metas || []), 
                         (errStatus, errData) => {
                             console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData);
-                            // В случае ошибки возвращаем пустой массив, чтобы не ломать Promise.all
                             resolve([]); 
                         }, 
                         false, 
@@ -166,17 +164,15 @@
             }
 
             if (requests.length === 0) {
-                this.activity.loader(false);
+                if (page_to_fetch === 1) this.activity.loader(false);
                 can_load_more = false;
                 if (onSuccess) onSuccess([], 0);
                 return;
             }
 
-            // Выполняем все запросы параллельно
             Promise.all(requests).then(results => {
-                this.activity.loader(false);
+                if (page_to_fetch === 1) this.activity.loader(false);
                 
-                // Объединяем результаты всех запросов в один массив
                 const combinedMetasRaw = [].concat(...results);
                 const uniqueNewMetas = [];
 
@@ -193,7 +189,7 @@
                 if (onSuccess) onSuccess(uniqueNewMetas, combinedMetasRaw.length, isEmptyAfterFilter);
 
             }).catch(error => {
-                this.activity.loader(false);
+                if (page_to_fetch === 1) this.activity.loader(false);
                 can_load_more = false;
                 console.error('Plugin: Error in Promise.all for fetching data', error);
                 if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data));
@@ -201,13 +197,18 @@
         };
 
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
+            body.find('.catalog-loader').remove();
+
             const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated);
             
             if (this.currentCatalogKey === 'random') {
                 can_load_more = true;
             } else if (isPaginating) {
-                if (originalApiBatchLength === 0 && current_api_page > 1) { can_load_more = false; }
-                if (originalApiBatchLength < ITEMS_PER_API_REQUEST && current_api_page >= 1) { can_load_more = false;}
+                // Рассчитываем порог для остановки загрузки
+                const itemsPerPage = ITEMS_PER_API_REQUEST * (this.currentCatalogKey === 'random' ? 2 : 1);
+                if (originalApiBatchLength < itemsPerPage) {
+                    can_load_more = false;
+                }
             } else {
                 can_load_more = false;
             }
@@ -231,7 +232,22 @@
             metasToAppend.forEach(meta => {
                 const card = new PluginCard(meta);
                 const card_render = card.render();
-                card_render.on("hover:focus", () => { last_focused_card_element = card_render[0]; scroll.update(last_focused_card_element, true);});
+                card_render.addClass('card-fade-in--initial');
+
+                card_render.on("hover:focus", () => {
+                    last_focused_card_element = card_render[0];
+                    scroll.update(last_focused_card_element, true);
+
+                    const currentIndex = items_instances.indexOf(card);
+                    if (
+                        can_load_more &&
+                        body.find('.catalog-loader').length === 0 &&
+                        currentIndex >= items_instances.length - PRELOAD_THRESHOLD
+                    ) {
+                        this.loadNextPage(false);
+                    }
+                });
+                
                 card_render.on("hover:enter", () => {
                     const cardFlaskData = card.getRawData();
                     let item_id_slug_for_url = cardFlaskData.id;
@@ -284,20 +300,45 @@
                         onSelect: () => { Lampa.Select.close(); Lampa.Controller.toggle('content'); }
                     });
                 });
-                body.append(card_render); items_instances.push(card); setTimeout(()=>card.updateIcons(),50);
+
+                body.append(card_render);
+                items_instances.push(card);
+                
+                setTimeout(() => {
+                    card_render.removeClass('card-fade-in--initial');
+                }, 10);
+
+                setTimeout(() => card.updateIcons(), 50);
             });
+
             if(!last_focused_card_element&&items_instances.length>0){const fvc=items_instances.find(ci=>$(ci.render()).is(':visible'));if(fvc)last_focused_card_element=fvc.render()[0]}this.activity.toggle();
         };
+
         this.loadNextPage = function(isAutoRetry = false) {
-            if (!can_load_more || this.activity.loader()) return;
+            if (!can_load_more || body.find('.catalog-loader').length > 0) return;
+            
+            const loader_element = $('<div class="catalog-loader"><div class="catalog-loader__spinner"></div></div>');
+            body.append(loader_element);
+            scroll.update(loader_element[0], true);
+
             if (!isAutoRetry) auto_load_attempts = 0;
             current_api_page++;
-            this.fetchData(current_api_page, (newMetas, originalLength, isEmptyAfterFilter) => { this.appendCardsToDOM(newMetas, originalLength, isEmptyAfterFilter); }, () => { can_load_more = false; }, isAutoRetry);
+            this.fetchData(current_api_page, 
+                (newMetas, originalLength, isEmptyAfterFilter) => { 
+                    this.appendCardsToDOM(newMetas, originalLength, isEmptyAfterFilter); 
+                }, 
+                () => { 
+                    body.find('.catalog-loader').remove();
+                    can_load_more = false; 
+                }, 
+                isAutoRetry
+            );
         };
+
         this.build = function () {
             scroll.minus();
             scroll.onWheel = (step) => { if (!Lampa.Controller.own(this)) this.start(); if (step > 0) Navigator.move('down'); else Navigator.move('up'); };
-            scroll.onEnd = () => { if (can_load_more) { this.loadNextPage(false); }};
+            // Загрузка теперь происходит по фокусу, onEnd не нужен
             this.headeraction();
             this.fetchData(1,
                 (initialMetas, originalLength, isEmptyAfterFilterOnInit) => {
@@ -321,6 +362,7 @@
             );
             scroll.append(head); scroll.append(body); html.append(scroll.render(true));
         };
+        
         this.headeraction = function () {
             const homeButton = head.find('.plugin__home');
             const filterButton = head.find('.plugin__filter');
@@ -416,7 +458,7 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} \n</style>");
+            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .catalog-loader{width:100%;padding:2em 0;display:flex;justify-content:center;align-items:center;} .catalog-loader__spinner{width:40px;height:40px;border:4px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:lme-spin 1s linear infinite;} @keyframes lme-spin{to{transform:rotate(360deg);}} \n</style>");
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
