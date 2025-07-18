@@ -1,6 +1,6 @@
 // Укажите своё имя пользователя и репозиторий
 const GITHUB_USER = "qipparu";
-const REPO_NAME = "test";
+const REPO_NAME = "LampaPlugins";
 const BRANCH = "main"; // Или "master"
 
 const scriptList = document.getElementById("script-list");
