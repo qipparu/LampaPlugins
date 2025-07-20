@@ -567,42 +567,26 @@
                     }
                     .my-h-hub-plugin .category-full {
                         display: grid;
-                        grid-gap: 1.5rem;
                         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-                        padding: 0 1.5em;
+                        grid-gap: 1.5rem;
+                        padding: 0 1.5rem;
                     }
-                    .my-h-hub-plugin .card,
-                    .my-h-hub-plugin .card-skeleton {
+                    .my-h-hub-plugin .card {
                         margin: 0 !important;
                         width: 100%;
                     }
-                    .lmeshm-card__fav-icons {
-                        position:absolute; top:0.3em; right:0.3em; display:flex; flex-direction:column; gap:0.2em; z-index:5;
+                     @media (max-width: 768px) {
+                        .my-h-hub-plugin .category-full {
+                            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                            grid-gap: 1rem;
+                            padding: 0 1rem;
+                        }
                     }
-                    .lmeshm-card__fav-icons .card__icon {
-                        background-color:rgba(0,0,0,0.5); border-radius:0.2em; padding:0.1em;
-                    }
-                    .card-fade-in--initial {
-                        opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease-out, transform 0.4s ease-out;
-                    }
-                    .skeleton-loader-container {
-                        display: contents;
-                    }
-                    .card-skeleton {
-                        background: rgba(255,255,255,0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden;
-                    }
-                    .card-skeleton::before {
-                        content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
-                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-                        animation: shimmer 1.5s infinite;
-                    }
-                    @keyframes shimmer { 100% { left: 100%; } }
-
                     @media (max-width: 480px) {
                         .my-h-hub-plugin .category-full {
-                            padding: 0 0.5em;
-                            grid-gap: 1em;
-                            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                            grid-gap: 0.5rem;
+                            padding: 0 0.5rem;
                         }
                     }
                 `;
