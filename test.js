@@ -557,29 +557,26 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            if (!$('style[data-my-hhub-styles]').length) {
+            const mobile_style_id = 'my-hhub-mobile-styles';
+            if (!$(`style[data-my-styles-id="${mobile_style_id}"]`).length) {
                 const style = document.createElement('style');
-                style.setAttribute('data-my-hhub-styles', 'true');
+                style.setAttribute('data-my-styles-id', mobile_style_id);
                 style.textContent = `
-                    .my-h-hub-plugin .torrent-filter {
-                        flex-wrap: wrap;
-                        gap: 0.5em;
-                    }
-                    .my-h-hub-plugin .category-full {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-                        grid-gap: 1.5rem;
-                        padding: 0 1.5rem;
-                    }
-                    .my-h-hub-plugin .card {
-                        margin: 0 !important;
-                        width: 100%;
-                    }
-                     @media (max-width: 768px) {
+                    @media (max-width: 768px) {
+                        .my-h-hub-plugin .torrent-filter {
+                            flex-wrap: wrap;
+                            gap: 0.5em;
+                        }
                         .my-h-hub-plugin .category-full {
-                            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                            display: grid !important;
+                            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                             grid-gap: 1rem;
                             padding: 0 1rem;
+                            justify-content: initial !important;
+                        }
+                        .my-h-hub-plugin .card {
+                            margin: 0 !important;
+                            width: 100%;
                         }
                     }
                     @media (max-width: 480px) {
