@@ -553,7 +553,6 @@
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
                     <img src="{img}" class="LMEShikimori card__img" />
-                    <div class="LMEShikimori card__type">{type}</div>
                 </div>
                 <div class="LMEShikimori card__title">{title}</div>
             </div>`);
