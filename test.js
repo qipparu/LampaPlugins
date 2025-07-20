@@ -89,11 +89,10 @@
         this.activity = object;
         const PRELOAD_THRESHOLD = 12;
         const userLang = Lampa.Storage.field('language');
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         let network = new Lampa.Reguest();
         let scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
-        let items_instances = [];
-        let displayed_metas_ids = new Set();
+        let items_instances = []; let displayed_metas_ids = new Set();
         let current_api_page = 1; let can_load_more = true; let auto_load_attempts = 0;
         let saved_scroll_position = 0;
         const MAX_AUTO_LOAD_ATTEMPTS = 5;
@@ -393,21 +392,37 @@
                 skeleton_container.append('<div class="card-skeleton"></div>');
             }
             body.append(skeleton_container);
+            scroll.update(skeleton_container.find('.card-skeleton:first-child')[0], true);
 
             if (!isAutoRetry) auto_load_attempts = 0;
             current_api_page++;
             
-            this.fetchData(
-                current_api_page,
-                (newMetas, originalLength, isEmptyAfterFilter) => {
-                    this.appendCardsToDOM(newMetas, originalLength, isEmptyAfterFilter);
-                },
-                () => {
+            const fetchDataPromise = new Promise((resolve, reject) => {
+                this.fetchData(
+                    current_api_page,
+                    (newMetas, originalLength, isEmptyAfterFilter) => {
+                        resolve({ newMetas, originalLength, isEmptyAfterFilter });
+                    },
+                    reject,
+                    isAutoRetry
+                );
+            });
+
+            const minDelayPromise = new Promise(resolve => setTimeout(resolve, 400));
+
+            Promise.all([fetchDataPromise, minDelayPromise])
+                .then(([dataResult]) => {
+                    this.appendCardsToDOM(dataResult.newMetas, dataResult.originalLength, dataResult.isEmptyAfterFilter);
+                    if (isTouchDevice) {
+                        scroll.update();
+                    } else {
+                        this.activity.toggle();
+                    }
+                })
+                .catch(() => {
                     body.find('.skeleton-loader-container').remove();
                     can_load_more = false;
-                },
-                isAutoRetry
-            );
+                });
         };
 
         this.build = function () {
@@ -427,7 +442,11 @@
                 (initialMetas, originalLength, isEmptyAfterFilterOnInit) => {
                     if (initialMetas.length > 0 || items_instances.length > 0) {
                         this.appendCardsToDOM(initialMetas, originalLength, isEmptyAfterFilterOnInit);
-                        this.activity.toggle();
+                        if (isTouchDevice) {
+                            scroll.update();
+                        } else {
+                            this.activity.toggle();
+                        }
                     } else if (isEmptyAfterFilterOnInit && can_load_more) {
                         auto_load_attempts++; this.loadNextPage(true);
                     } else {
@@ -548,35 +567,13 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            const style_id = 'my-hhub-styles';
-            if (!$(`style[data-my-styles-id="${style_id}"]`).length) {
+            Lampa.Template.add('LMEShikimoriStyle', "<style>\\n .my-h-hub-plugin .category-full, .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.my-h-hub-plugin .LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.my-h-hub-plugin .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .my-h-hub-plugin .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .my-h-hub-plugin .skeleton-loader-container { display: contents; } .my-h-hub-plugin .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .my-h-hub-plugin .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } .my-h-hub-plugin .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .my-h-hub-plugin .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} \\n</style>");
+            
+            const mobile_style_id = 'my-hhub-mobile-styles';
+            if (!$(`style[data-my-styles-id="${mobile_style_id}"]`).length) {
                 const style = document.createElement('style');
-                style.setAttribute('data-my-styles-id', style_id);
+                style.setAttribute('data-my-styles-id', mobile_style_id);
                 style.textContent = `
-                    /* --- Default Desktop Styles --- */
-                    .my-h-hub-plugin .category-full {
-                        -webkit-box-pack: justify !important;
-                        -webkit-justify-content: space-between !important;
-                        -ms-flex-pack: justify !important;
-                        justify-content: space-between !important;
-                    }
-                    .my-h-hub-plugin .card-fade-in--initial {
-                        opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease-out, transform 0.4s ease-out;
-                    }
-                    .my-h-hub-plugin .skeleton-loader-container {
-                        display: contents;
-                    }
-                    .my-h-hub-plugin .card-skeleton {
-                        background: rgba(255,255,255,0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden;
-                    }
-                    .my-h-hub-plugin .card-skeleton::before {
-                        content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
-                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-                        animation: shimmer 1.5s infinite;
-                    }
-                     @keyframes shimmer { 100% { left: 100%; } }
-
-                    /* --- Mobile and Tablet Overrides --- */
                     @media (max-width: 768px) {
                         .my-h-hub-plugin .torrent-filter {
                             flex-wrap: wrap;
@@ -604,7 +601,6 @@
                 document.body.appendChild(style);
             }
 
-
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
@@ -612,6 +608,7 @@
                 </div>
                 <div class="LMEShikimori card__title">{title}</div>
             </div>`);
+            if ($('style[data-lmeshikimori-styles]').length === 0) { const s=$(Lampa.Template.get('LMEShikimoriStyle',{},true));s.attr('data-lmeshikimori-styles','true');$('body').append(s); }
 
             let lang_packs = {};
             Object.assign(lang_packs, {
