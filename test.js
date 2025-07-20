@@ -322,7 +322,12 @@
                     const oD = card.getRawData();
                     const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: oD.type==='series'?'tv':'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
                     const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
+                    const searchTitle = (oD.name || '').replace(/\d+/g, '').trim();
                     const mn = [
+                        {
+                            title: 'Искать аниме',
+                            search_title: searchTitle
+                        },
                         { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
                         { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
                         { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
@@ -332,7 +337,20 @@
                         title: getLangText('title_action', CATALOG_TITLES_FALLBACK.title_action), items: mn,
                         onBack: () => Lampa.Controller.toggle('content'),
                         onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); },
-                        onSelect: () => { Lampa.Select.close(); Lampa.Controller.toggle('content'); }
+                        onSelect: (selected) => {
+                            if (selected.search_title) {
+                                Lampa.Activity.push({
+                                    component: 'my_plugin_catalog',
+                                    title: 'Поиск: ' + selected.search_title,
+                                    params: {
+                                        search_query: selected.search_title
+                                    }
+                                });
+                            } else {
+                                Lampa.Select.close();
+                                Lampa.Controller.toggle('content');
+                            }
+                        }
                     });
                 });
                 
