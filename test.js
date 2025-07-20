@@ -557,11 +557,17 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            const mobile_style_id = 'my-hhub-mobile-styles';
-            if (!$(`style[data-my-styles-id="${mobile_style_id}"]`).length) {
+            const style_id = 'my-hhub-styles';
+            if (!$(`style[data-my-styles-id="${style_id}"]`).length) {
                 const style = document.createElement('style');
-                style.setAttribute('data-my-styles-id', mobile_style_id);
+                style.setAttribute('data-my-styles-id', style_id);
                 style.textContent = `
+                    /* --- Default Desktop Styles --- */
+                    .my-h-hub-plugin .category-full {
+                        justify-content: space-between !important;
+                    }
+
+                    /* --- Mobile and Tablet Overrides --- */
                     @media (max-width: 768px) {
                         .my-h-hub-plugin .torrent-filter {
                             flex-wrap: wrap;
@@ -572,7 +578,6 @@
                             grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                             grid-gap: 1rem;
                             padding: 0 1rem;
-                            justify-content: initial !important;
                         }
                         .my-h-hub-plugin .card {
                             margin: 0 !important;
@@ -589,6 +594,7 @@
                 `;
                 document.body.appendChild(style);
             }
+
 
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
