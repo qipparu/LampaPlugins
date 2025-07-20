@@ -84,6 +84,7 @@
     // --- PluginComponent ---
     function PluginComponent(object) {
         this.activity = object;
+        const PRELOAD_THRESHOLD = 12;
         let network = new Lampa.Reguest();
         let scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         let items_instances = []; let displayed_metas_ids = new Set();
@@ -311,6 +312,10 @@
                 card_render.on("hover:focus", () => {
                     last_focused_card_element = card_render[0];
                     scroll.update(last_focused_card_element, true);
+                    const cardIndex = items_instances.findIndex(inst => inst === card);
+                    if (cardIndex > -1 && items_instances.length - cardIndex <= PRELOAD_THRESHOLD) {
+                        this.loadNextPage(false);
+                    }
                 });
 
                 card_render.on('hover:long', () => {
@@ -390,12 +395,6 @@
         this.build = function () {
             scroll.minus();
             scroll.onWheel = (step) => { if (!Lampa.Controller.own(this)) this.start(); if (step > 0) Navigator.move('down'); else Navigator.move('up'); };
-            
-            scroll.onEnd = () => {
-                if (can_load_more) {
-                    this.loadNextPage(false);
-                }
-            };
             
             this.headeraction();
             this.fetchData(1,
