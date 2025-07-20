@@ -252,7 +252,115 @@
                 const card = new PluginCard(meta, userLang);
                 const card_render = card.render();
                 card_render.addClass('card-fade-in--initial');
-                card_render.data('card-instance', card);
+
+                const handleCardEnter = () => {
+                    last_focused_card_element = card_render[0];
+
+                    const cardFlaskData = card.getRawData();
+                    let item_id_slug_for_url = cardFlaskData.id;
+                    let stream_type_for_url = "hentai";
+                    if (cardFlaskData.id.includes('::')) {
+                        const parts = cardFlaskData.id.split('::');
+                        stream_type_for_url = parts[0]; item_id_slug_for_url = parts[1];
+                    }
+                    const streamsUrl = STREAM_ENDPOINT_TPL.replace('{type}', stream_type_for_url).replace('{id}', item_id_slug_for_url);
+                    network.clear();
+                    let requestOptions = {dataType: 'json', timeout: 20000};
+                    const savedCookie = localStorage.getItem('my_plugin_cookie');
+                    if (savedCookie) requestOptions.headers = {'X-Custom-Cookie': savedCookie};
+
+                    this.activity.loader(true);
+                    network.native(streamsUrl, fr => {
+                        this.activity.loader(false);
+                        if(fr && fr.streams && fr.streams.length > 0) {
+                            const pi = fr.streams.map(s => {
+                                let st = s.name || "P";
+                                if(s.title) st += ` - ${s.title}`;
+                                return {title: st, stream_details: s};
+                            });
+                            Lampa.Select.show({
+                                title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
+                                items: pi,
+                                onBack: () => Lampa.Controller.toggle('content'),
+                                onSelect: si => {
+                                    const sd = si.stream_details;
+                                    const pld = {title: cardFlaskData.name || 'Без названия', poster: cardFlaskData.poster || '', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type === 'series' ? 'tv' : 'movie', source: PLUGIN_SOURCE_KEY};
+                                    if(sd.url) {
+                                        let vu = sd.url;
+                                        if(true) { // Assuming proxy is always enabled based on original logic
+                                            vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
+                                        }
+                                        pld.url = vu;
+                                        if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
+                                        if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                        Lampa.Player.play(pld);
+                                        Lampa.Player.playlist([pld]);
+                                        if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
+                                        card.updateIcons();
+                                    } else {
+                                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
+                                    }
+                                }
+                            });
+                        } else {
+                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
+                        }
+                    }, () => {
+                        this.activity.loader(false);
+                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
+                    }, false, requestOptions);
+                };
+                card_render.on("hover:enter", handleCardEnter);
+
+                card_render.on("hover:focus", () => {
+                    last_focused_card_element = card_render[0];
+                    scroll.update(last_focused_card_element, true);
+                    const cardIndex = items_instances.findIndex(inst => inst === card);
+                    if (cardIndex > -1 && items_instances.length - cardIndex <= PRELOAD_THRESHOLD) {
+                        this.loadNextPage(false);
+                    }
+                });
+
+                card_render.on('hover:long', () => {
+                    const oD = card.getRawData();
+                    const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: oD.type==='series'?'tv':'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
+                    const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
+                    let russianTitle = oD.name || '';
+                    if (russianTitle.includes(' / ')) {
+                        russianTitle = russianTitle.split(' / ')[0];
+                    }
+                    const searchTitle = russianTitle.replace(/\d+/g, '').trim();
+                    const mn = [
+                        {
+                            title: 'Искать аниме',
+                            search_title: searchTitle
+                        },
+                        { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
+                        { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
+                        { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
+                        { title: getLangText('menu_history', CATALOG_TITLES_FALLBACK.menu_history), where: 'history', checkbox: true, checked: sT.history }
+                    ];
+                    Lampa.Select.show({
+                        title: getLangText('title_action', CATALOG_TITLES_FALLBACK.title_action), items: mn,
+                        onBack: () => Lampa.Controller.toggle('content'),
+                        onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); },
+                        onSelect: (selected) => {
+                            if (selected.search_title) {
+                                Lampa.Activity.push({
+                                    component: 'my_plugin_catalog',
+                                    title: 'Поиск: ' + selected.search_title,
+                                    params: {
+                                        search_query: selected.search_title
+                                    }
+                                });
+                            } else {
+                                Lampa.Select.close();
+                                Lampa.Controller.toggle('content');
+                            }
+                        }
+                    });
+                });
                 
                 fragment.appendChild(card_render[0]);
                 new_card_instances.push(card);
@@ -272,7 +380,7 @@
 
             if(!last_focused_card_element&&items_instances.length>0){const fvc=items_instances.find(ci=>$(ci.render()).is(':visible'));if(fvc)last_focused_card_element=fvc.render()[0]}
         };
-        
+
         this.loadNextPage = function(isAutoRetry = false) {
             if (!can_load_more || body.find('.skeleton-loader-container').length > 0) return;
             
@@ -315,125 +423,6 @@
             scroll.onWheel = (step) => { if (!Lampa.Controller.own(this)) this.start(); if (step > 0) Navigator.move('down'); else Navigator.move('up'); };
             
             this.headeraction();
-
-            body.on('hover:focus', '.selector', (e) => {
-                const card_render = $(e.currentTarget);
-                const card = card_render.data('card-instance');
-                if (!card) return;
-
-                last_focused_card_element = card_render[0];
-                scroll.update(last_focused_card_element, true);
-                const cardIndex = items_instances.findIndex(inst => inst === card);
-                if (cardIndex > -1 && items_instances.length - cardIndex <= PRELOAD_THRESHOLD) {
-                    this.loadNextPage(false);
-                }
-            });
-
-            body.on('hover:enter', '.selector', (e) => {
-                const card_render = $(e.currentTarget);
-                const card = card_render.data('card-instance');
-                if (!card) return;
-                
-                const cardFlaskData = card.getRawData();
-                let item_id_slug_for_url = cardFlaskData.id;
-                let stream_type_for_url = "hentai";
-                if (cardFlaskData.id.includes('::')) {
-                    const parts = cardFlaskData.id.split('::');
-                    stream_type_for_url = parts[0]; item_id_slug_for_url = parts[1];
-                }
-                const streamsUrl = STREAM_ENDPOINT_TPL.replace('{type}', stream_type_for_url).replace('{id}', item_id_slug_for_url);
-                network.clear();
-                let requestOptions = {dataType: 'json', timeout: 20000};
-                const savedCookie = localStorage.getItem('my_plugin_cookie');
-                if (savedCookie) requestOptions.headers = {'X-Custom-Cookie': savedCookie};
-
-                this.activity.loader(true);
-                network.native(streamsUrl, fr => {
-                    this.activity.loader(false);
-                    if(fr && fr.streams && fr.streams.length > 0) {
-                        const pi = fr.streams.map(s => {
-                            let st = s.name || "P";
-                            if(s.title) st += ` - ${s.title}`;
-                            return {title: st, stream_details: s};
-                        });
-                        Lampa.Select.show({
-                            title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
-                            items: pi,
-                            onBack: () => Lampa.Controller.toggle('content'),
-                            onSelect: si => {
-                                const sd = si.stream_details;
-                                const pld = {title: cardFlaskData.name || 'Без названия', poster: cardFlaskData.poster || '', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type === 'series' ? 'tv' : 'movie', source: PLUGIN_SOURCE_KEY};
-                                if(sd.url) {
-                                    let vu = sd.url;
-                                    if(true) { // Assuming proxy is always enabled based on original logic
-                                        vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
-                                        if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
-                                    }
-                                    pld.url = vu;
-                                    if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
-                                    if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
-                                    Lampa.Player.play(pld);
-                                    Lampa.Player.playlist([pld]);
-                                    if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
-                                    card.updateIcons();
-                                } else {
-                                    if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
-                                }
-                            }
-                        });
-                    } else {
-                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
-                    }
-                }, () => {
-                    this.activity.loader(false);
-                    if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
-                }, false, requestOptions);
-            });
-
-            body.on('hover:long', '.selector', (e) => {
-                const card_render = $(e.currentTarget);
-                const card = card_render.data('card-instance');
-                if (!card) return;
-
-                const oD = card.getRawData();
-                const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: oD.type==='series'?'tv':'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
-                const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
-                let russianTitle = oD.name || '';
-                if (russianTitle.includes(' / ')) {
-                    russianTitle = russianTitle.split(' / ')[0];
-                }
-                const searchTitle = russianTitle.replace(/\d+/g, '').trim();
-                const mn = [
-                    {
-                        title: 'Искать аниме',
-                        search_title: searchTitle
-                    },
-                    { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
-                    { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
-                    { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
-                    { title: getLangText('menu_history', CATALOG_TITLES_FALLBACK.menu_history), where: 'history', checkbox: true, checked: sT.history }
-                ];
-                Lampa.Select.show({
-                    title: getLangText('title_action', CATALOG_TITLES_FALLBACK.title_action), items: mn,
-                    onBack: () => Lampa.Controller.toggle('content'),
-                    onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); },
-                    onSelect: (selected) => {
-                        if (selected.search_title) {
-                            Lampa.Activity.push({
-                                component: 'my_plugin_catalog',
-                                title: 'Поиск: ' + selected.search_title,
-                                params: {
-                                    search_query: selected.search_title
-                                }
-                            });
-                        } else {
-                            Lampa.Select.close();
-                            Lampa.Controller.toggle('content');
-                        }
-                    }
-                });
-            });
-            
             this.fetchData(1,
                 (initialMetas, originalLength, isEmptyAfterFilterOnInit) => {
                     if (initialMetas.length > 0 || items_instances.length > 0) {
@@ -541,7 +530,6 @@
         this.render = function () { return html; };
         this.destroy = function () {
             if(network) network.clear(); if(scroll) scroll.destroy(); this.clear(); html.remove();
-            body.off('hover:focus hover:enter hover:long');
             items_instances=null;displayed_metas_ids=null;network=null;scroll=null;last_focused_card_element=null;
             current_api_page=1;can_load_more=true;auto_load_attempts=0;
         };
@@ -564,7 +552,7 @@
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
-                    <img src="{img}" class="LMEShikimori card__img" loading="lazy" />
+                    <img src="{img}" class="LMEShikimori card__img" />
                 </div>
                 <div class="LMEShikimori card__title">{title}</div>
             </div>`);
