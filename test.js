@@ -413,7 +413,7 @@
             Promise.all([fetchDataPromise, minDelayPromise])
                 .then(([dataResult]) => {
                     this.appendCardsToDOM(dataResult.newMetas, dataResult.originalLength, dataResult.isEmptyAfterFilter);
-                    this.activity.toggle();
+                    scroll.update();
                 })
                 .catch(() => {
                     body.find('.skeleton-loader-container').remove();
@@ -559,22 +559,58 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            const style = document.createElement('style');
-            style.setAttribute('data-my-hhub-styles', 'true');
-            style.textContent = `
-                .my-h-hub-plugin .category-full {
-                    justify-content: flex-start !important;
-                    gap: 1.5rem;
-                }
-                .my-h-hub-plugin .card {
-                    margin: 0 !important;
-                }
-            `;
             if (!$('style[data-my-hhub-styles]').length) {
+                const style = document.createElement('style');
+                style.setAttribute('data-my-hhub-styles', 'true');
+                style.textContent = `
+                    .my-h-hub-plugin .category-full {
+                        display: flex;
+                        flex-wrap: wrap;
+                        justify-content: flex-start;
+                        gap: 1em;
+                        padding: 0 1.5em;
+                    }
+                    .my-h-hub-plugin .card,
+                    .my-h-hub-plugin .card-skeleton {
+                        margin: 0 !important;
+                        width: calc(50% - 0.5em);
+                    }
+                    .lmeshm-card__fav-icons {
+                        position:absolute; top:0.3em; right:0.3em; display:flex; flex-direction:column; gap:0.2em; z-index:5;
+                    }
+                    .lmeshm-card__fav-icons .card__icon {
+                        background-color:rgba(0,0,0,0.5); border-radius:0.2em; padding:0.1em;
+                    }
+                    .card-fade-in--initial {
+                        opacity: 0; transform: translateY(20px); transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+                    }
+                    .skeleton-loader-container {
+                        display: contents;
+                    }
+                    .card-skeleton {
+                        background: rgba(255,255,255,0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden;
+                    }
+                    .card-skeleton::before {
+                        content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+                        animation: shimmer 1.5s infinite;
+                    }
+                    @keyframes shimmer { 100% { left: 100%; } }
+
+                    @media (max-width: 480px) {
+                        .my-h-hub-plugin .category-full {
+                            padding: 0 0.5em;
+                            gap: 0.5em;
+                        }
+                        .my-h-hub-plugin .card,
+                        .my-h-hub-plugin .card-skeleton {
+                            width: calc(50% - 0.25em);
+                        }
+                    }
+                `;
                 document.body.appendChild(style);
             }
 
-            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .skeleton-loader-container { display: contents; } .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } @media (max-width: 768px){.LMEShikimori-catalog--list{padding: 0 0.5em;}.LMEShikimori.card, .card-skeleton{width:48%;margin-bottom:1em;}.LMEShikimori.card__title{font-size:0.9em;}.LMEShikimori-head.torrent-filter{flex-wrap:wrap;margin-left:0.5em;}} @media (max-width: 480px){.LMEShikimori.card, .card-skeleton{width:47%;}} .lampa-layer{transition:opacity .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}.lampa-layer--show{opacity:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.lampa-layer:not(.lampa-layer--show){opacity:0;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px)} \n</style>");
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
@@ -582,7 +618,6 @@
                 </div>
                 <div class="LMEShikimori card__title">{title}</div>
             </div>`);
-            if ($('style[data-lmeshikimori-styles]').length === 0) { const s=$(Lampa.Template.get('LMEShikimoriStyle',{},true));s.attr('data-lmeshikimori-styles','true');$('body').append(s); }
 
             let lang_packs = {};
             Object.assign(lang_packs, {
