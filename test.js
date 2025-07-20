@@ -99,6 +99,7 @@
                        </div>`);
         const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
         let last_focused_card_element = null;
+        let searchCache = {};
         this.isSearchMode = this.activity.params && this.activity.params.search_query;
         this.searchQuery = this.isSearchMode ? this.activity.params.search_query : '';
         this.currentCatalogKey = this.isSearchMode ? 'search' : ((this.activity.params && this.activity.params.catalog_key) ? this.activity.params.catalog_key : 'new-releases');
@@ -112,37 +113,79 @@
         }
 
         this.fetchData = function (page_to_fetch, onSuccess, onError, isAutoRetry = false) {
-            if (!isAutoRetry) { auto_load_attempts = 0;}
+            if (!isAutoRetry) { auto_load_attempts = 0; }
+            
             if (page_to_fetch === 1) {
                 this.activity.loader(true);
             }
-            let urlToFetch;
 
-            if (this.isSearchMode) {
-                urlToFetch = FLASK_API_BASE + API_SEARCH_ENDPOINT + `?q=${encodeURIComponent(this.searchQuery)}&page=${page_to_fetch}`;
-            } else if (isTagCatalog) {
-                urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
-            } else if (currentCatalogConfig && currentCatalogConfig.path) {
-                urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
-                if (currentCatalogConfig.paginated && this.currentCatalogKey !== 'random') { urlToFetch += `?page=${page_to_fetch}`; }
-            } else { this.activity.loader(false); can_load_more = false; if (onSuccess) onSuccess([], 0); return;}
-
-            if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
-                this.activity.loader(false); can_load_more = false; if (onSuccess) onSuccess([], 0); return;
+            if (this.isSearchMode && page_to_fetch === 1 && searchCache[this.searchQuery]) {
+                if (onSuccess) {
+                    onSuccess(searchCache[this.searchQuery], searchCache[this.searchQuery].length, false);
+                }
+                this.activity.loader(false);
+                return;
             }
 
-            network.clear();
-            let fetchDataRequestOptions = {dataType:'json', timeout:20000};
-            const savedCookie = localStorage.getItem('my_plugin_cookie');
-            if (savedCookie) {
-                fetchDataRequestOptions.headers = {'X-Custom-Cookie': savedCookie};
+            const isRandomCategory = this.currentCatalogKey === 'random';
+            const requestCount = isRandomCategory ? 2 : 1;
+            const requests = [];
+
+            for (let i = 0; i < requestCount; i++) {
+                let urlToFetch;
+
+                if (this.isSearchMode) {
+                    urlToFetch = FLASK_API_BASE + API_SEARCH_ENDPOINT + `?q=${encodeURIComponent(this.searchQuery)}&page=${page_to_fetch}`;
+                } else if (isTagCatalog) {
+                    urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
+                } else if (currentCatalogConfig && currentCatalogConfig.path) {
+                    urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
+                    if (currentCatalogConfig.paginated && !isRandomCategory) {
+                        urlToFetch += `?page=${page_to_fetch}`;
+                    }
+                } else {
+                    continue;
+                }
+
+                if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
+                    continue;
+                }
+
+                let fetchDataRequestOptions = { dataType: 'json', timeout: 20000 };
+                const savedCookie = localStorage.getItem('my_plugin_cookie');
+                if (savedCookie) {
+                    fetchDataRequestOptions.headers = { 'X-Custom-Cookie': savedCookie };
+                }
+
+                const requestPromise = new Promise((resolve, reject) => {
+                    const singleRequestNetwork = new Lampa.Reguest();
+                    singleRequestNetwork.native(urlToFetch,
+                        (responseData) => resolve(responseData.metas || []), 
+                        (errStatus, errData) => {
+                            console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData);
+                            resolve([]); 
+                        }, 
+                        false, 
+                        fetchDataRequestOptions
+                    );
+                });
+                requests.push(requestPromise);
             }
 
-            network.native(urlToFetch, (responseData) => {
+            if (requests.length === 0) {
                 if (page_to_fetch === 1) this.activity.loader(false);
-                let newMetasRaw = responseData.metas || [];
+                can_load_more = false;
+                if (onSuccess) onSuccess([], 0);
+                return;
+            }
+
+            Promise.all(requests).then(results => {
+                if (page_to_fetch === 1) this.activity.loader(false);
+                
+                const combinedMetasRaw = [].concat(...results);
                 const uniqueNewMetas = [];
-                newMetasRaw.forEach(meta => {
+
+                combinedMetasRaw.forEach(meta => {
                     if (meta && meta.id && !displayed_metas_ids.has(meta.id)) {
                         if (meta.type !== "series") {
                             uniqueNewMetas.push(meta);
@@ -150,14 +193,20 @@
                         }
                     }
                 });
-                const isEmptyAfterFilter = newMetasRaw.length > 0 && uniqueNewMetas.length === 0;
-                if (onSuccess) onSuccess(uniqueNewMetas, newMetasRaw.length, isEmptyAfterFilter);
-            }, (errStatus, errData) => {
+
+                if (this.isSearchMode && page_to_fetch === 1) {
+                    searchCache[this.searchQuery] = uniqueNewMetas;
+                }
+
+                const isEmptyAfterFilter = combinedMetasRaw.length > 0 && uniqueNewMetas.length === 0;
+                if (onSuccess) onSuccess(uniqueNewMetas, combinedMetasRaw.length, isEmptyAfterFilter);
+
+            }).catch(error => {
                 if (page_to_fetch === 1) this.activity.loader(false);
                 can_load_more = false;
-                console.error(`Plugin: Error fetching data from ${urlToFetch}`, errStatus, errData);
+                console.error('Plugin: Error in Promise.all for fetching data', error);
                 if (onError) onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data));
-            }, false, fetchDataRequestOptions);
+            });
         };
         
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
