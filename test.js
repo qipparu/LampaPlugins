@@ -240,11 +240,13 @@
             }
             if (metasToAppend.length > 0) auto_load_attempts = 0;
 
-            metasToAppend.forEach((meta, index) => {
+            const fragment = document.createDocumentFragment();
+            const new_card_instances = [];
+
+            metasToAppend.forEach(meta => {
                 const card = new PluginCard(meta);
                 const card_render = card.render();
                 card_render.addClass('card-fade-in--initial');
-                card_render.css('transition-delay', (index * 60) + 'ms');
 
                 const handleCardEnter = () => {
                     last_focused_card_element = card_render[0];
@@ -261,36 +263,51 @@
                     let requestOptions = {dataType: 'json', timeout: 20000};
                     const savedCookie = localStorage.getItem('my_plugin_cookie');
                     if (savedCookie) requestOptions.headers = {'X-Custom-Cookie': savedCookie};
-                    network.native(streamsUrl,fr=>{
-                        if(fr&&fr.streams&&fr.streams.length>0){
-                            const pi=fr.streams.map(s=>{let st=s.name||"P";if(s.title)st+=` - ${s.title}`;return{title:st,stream_details:s}});
-                            Lampa.Select.show({title:getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),items:pi,onBack:()=>Lampa.Controller.toggle('content'),
-                            onSelect:si=>{
-                                const sd=si.stream_details;
-                                const pld={title: cardFlaskData.name||'Без названия', poster: cardFlaskData.poster||'', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type==='series'?'tv':'movie', source: PLUGIN_SOURCE_KEY};
-                                if(sd.url){
-                                    let vu=sd.url; let uvp=true;
-                                    if(uvp){vu=PROXY_FOR_EXTERNAL_URLS+encodeURIComponent(vu);if(Lampa.Noty)Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500})}
-                                    pld.url=vu;
-                                    if(Lampa.Timeline&&typeof Lampa.Timeline.view==='function')pld.timeline=Lampa.Timeline.view(pld.id)||{};
-                                    if(Lampa.Timeline&&typeof Lampa.Timeline.update==='function')Lampa.Timeline.update(pld);
-                                    Lampa.Player.play(pld);Lampa.Player.playlist([pld]);
-                                    if(Lampa.Favorite&&typeof Lampa.Favorite.add==='function')Lampa.Favorite.add('history',pld);
-                                    card.updateIcons();
+
+                    this.activity.loader(true);
+                    network.native(streamsUrl, fr => {
+                        this.activity.loader(false);
+                        if(fr && fr.streams && fr.streams.length > 0) {
+                            const pi = fr.streams.map(s => {
+                                let st = s.name || "P";
+                                if(s.title) st += ` - ${s.title}`;
+                                return {title: st, stream_details: s};
+                            });
+                            Lampa.Select.show({
+                                title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
+                                items: pi,
+                                onBack: () => Lampa.Controller.toggle('content'),
+                                onSelect: si => {
+                                    const sd = si.stream_details;
+                                    const pld = {title: cardFlaskData.name || 'Без названия', poster: cardFlaskData.poster || '', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type === 'series' ? 'tv' : 'movie', source: PLUGIN_SOURCE_KEY};
+                                    if(sd.url) {
+                                        let vu = sd.url;
+                                        if(true) { // Assuming proxy is always enabled based on original logic
+                                            vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
+                                        }
+                                        pld.url = vu;
+                                        if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
+                                        if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                        Lampa.Player.play(pld);
+                                        Lampa.Player.playlist([pld]);
+                                        if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
+                                        card.updateIcons();
+                                    } else {
+                                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
+                                    }
                                 }
-                                else if(sd.externalUrl){let uo=sd.externalUrl;uo=PROXY_FOR_EXTERNAL_URLS+encodeURIComponent(uo);if(Lampa.Noty)Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});Lampa.Utils.openLink(uo)}
-                                else Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url))
-                            }})
-                        } else Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found))
-                    }, (es,ed)=>{
-                        console.error("P:Err fetch streams",es,ed);
-                        Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error))
-                    },false, requestOptions);
+                            });
+                        } else {
+                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
+                        }
+                    }, () => {
+                        this.activity.loader(false);
+                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
+                    }, false, requestOptions);
                 };
-                
                 card_render.on("hover:enter", handleCardEnter);
-                card_render.on("click", handleCardEnter);
-                
+
                 card_render.on("hover:focus", () => {
                     last_focused_card_element = card_render[0];
                     scroll.update(last_focused_card_element, true);
@@ -313,16 +330,22 @@
                         onSelect: () => { Lampa.Select.close(); Lampa.Controller.toggle('content'); }
                     });
                 });
-
-                body.append(card_render);
-                items_instances.push(card);
                 
-                setTimeout(() => {
-                    card_render.removeClass('card-fade-in--initial');
-                }, 10);
-
-                setTimeout(() => card.updateIcons(), 50);
+                fragment.appendChild(card_render[0]);
+                new_card_instances.push(card);
             });
+
+            body.append(fragment);
+            items_instances.push(...new_card_instances);
+
+            // Batch DOM updates for performance
+            requestAnimationFrame(() => {
+                body.find('.card-fade-in--initial').removeClass('card-fade-in--initial');
+            });
+            
+            setTimeout(() => {
+                new_card_instances.forEach(card => card.updateIcons());
+            }, 50);
 
             if(!last_focused_card_element&&items_instances.length>0){const fvc=items_instances.find(ci=>$(ci.render()).is(':visible'));if(fvc)last_focused_card_element=fvc.render()[0]}
         };
@@ -356,6 +379,7 @@
             Promise.all([fetchDataPromise, minDelayPromise])
                 .then(([dataResult]) => {
                     this.appendCardsToDOM(dataResult.newMetas, dataResult.originalLength, dataResult.isEmptyAfterFilter);
+                    this.activity.toggle();
                 })
                 .catch(() => {
                     body.find('.skeleton-loader-container').remove();
