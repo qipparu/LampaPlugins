@@ -97,11 +97,11 @@
         const MAX_AUTO_LOAD_ATTEMPTS = 5;
         const html = $("<div class='LMEShikimori-module'></div>");
         const isMobile = Lampa.Utils.isMobileDevice();
-        const head = $(`<div class='LMEShikimori-head torrent-filter'>
+        const head = $(`<div class='LMEShikimori-head torrent-filter ${isMobile ? 'mobile' : ''}'>
                         <div class='plugin__home simple-button simple-button--filter selector'>${getLangText('home_button_text', CATALOG_TITLES_FALLBACK.home_button_text)}</div>
                         <div class='plugin__filter simple-button simple-button--filter selector'>${getLangText('filter_title', CATALOG_TITLES_FALLBACK.filter_title)}</div>
                         <div class='plugin__search simple-button simple-button--filter selector'>${getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title)}</div>
-                        <div class='plugin__cookie simple-button simple-button--filter selector'>Авторизация Cookie</div>
+                        <div class='plugin__auth simple-button simple-button--filter selector'>Авторизация</div>
                        </div>`);
         const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
         let last_focused_card_element = null;
@@ -248,7 +248,6 @@
 
             const fragment = document.createDocumentFragment();
             const new_card_instances = [];
-
             metasToAppend.forEach(meta => {
                 const card = new PluginCard(meta, userLang);
                 const card_render = card.render();
@@ -476,7 +475,7 @@
             const homeButton = head.find('.plugin__home');
             const filterButton = head.find('.plugin__filter');
             const searchButton = head.find('.plugin__search');
-            const authButton = head.find('.plugin__cookie');
+            const authButton = head.find('.plugin__auth');
             homeButton.on('hover:enter', () => {
                 const mainDefaultKey = Object.keys(API_CATALOG_CONFIG).find(k => API_CATALOG_CONFIG[k].default_main) || 'new-releases';
                 Lampa.Activity.push({component: 'my_plugin_catalog', title: getLangText('cat_' + mainDefaultKey, CATALOG_TITLES_FALLBACK[mainDefaultKey]), params: { catalog_key: mainDefaultKey }});
@@ -573,7 +572,7 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em; align-items: center;}.LMEShikimori-head.torrent-filter.mobile {flex-wrap: wrap; justify-content: center;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .skeleton-loader-container { display: contents; } .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } @media (max-width: 768px){.LMEShikimori-catalog--list{padding: 0 0.5em;}.LMEShikimori.card, .card-skeleton{width: calc(50% - 1em);margin-bottom:1em;}.LMEShikimori.card__title{font-size:0.9em;}.LMEShikimori-head.torrent-filter{flex-wrap:wrap;margin-left:0.5em;}.LMEShikimori-head.torrent-filter .simple-button{margin-bottom: 0.5em;}} @media (max-width: 480px){.LMEShikimori.card, .card-skeleton{width:calc(50% - 0.5em);}} .lampa-layer{transition:opacity .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}.lampa-layer--show{opacity:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.lampa-layer:not(.lampa-layer--show){opacity:0;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px)} \n</style>");
+            Lampa.Template.add('LMEShikimoriStyle', "<style> .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em; align-items: center;}.LMEShikimori-head.torrent-filter.mobile {flex-wrap: wrap; justify-content: center;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .skeleton-loader-container { display: contents; } .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } @media (max-width: 768px){.LMEShikimori-catalog--list{padding: 0 0.5em;}.LMEShikimori.card, .card-skeleton{width: calc(50% - 1em);margin-bottom:1em;}.LMEShikimori.card__title{font-size:0.9em;}.LMEShikimori-head.torrent-filter{flex-wrap:wrap;margin-left:0.5em;}.LMEShikimori-head.torrent-filter .simple-button{margin-bottom: 0.5em;}} @media (max-width: 480px){.LMEShikimori.card, .card-skeleton{width:calc(50% - 0.5em);}} .lampa-layer{transition:opacity .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}.lampa-layer--show{opacity:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.lampa-layer:not(.lampa-layer--show){opacity:0;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px)} </style>");
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
