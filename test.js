@@ -67,18 +67,7 @@
     function PluginCard(data, userLang) {
         const pr = {id: data.id, name: data.name || 'Без названия', poster: data.poster || './img/img_broken.svg', type_display: data.type === "series" ? "SERIES" : (data.type === "movie" ? "MOVIE" : (data.type ? data.type.toUpperCase() : "MOVIE"))};
         
-        this.getDisplayTitle = function() {
-            const name = data.name || '';
-            if (name.includes(' / ')) {
-                const parts = name.split(' / ');
-                const russianName = parts[0].trim();
-                const englishName = parts[1].trim();
-                return userLang === 'ru' ? russianName : englishName;
-            }
-            return name;
-        };
-
-        const displayTitle = this.getDisplayTitle() || 'Без названия';
+        const displayTitle = data.name || 'Без названия';
         const item = Lampa.Template.get("LMEShikimori-Card", {img: pr.poster, type: pr.type_display, title: displayTitle});
 
         const updateFavoriteIcons = () => {
@@ -337,8 +326,11 @@
                     const oD = card.getRawData();
                     const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: oD.type==='series'?'tv':'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
                     const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
-                    const titleToUse = card.getDisplayTitle();
-                    const searchTitle = (titleToUse || '').replace(/\d+/g, '').trim();
+                    let russianTitle = oD.name || '';
+                    if (russianTitle.includes(' / ')) {
+                        russianTitle = russianTitle.split(' / ')[0];
+                    }
+                    const searchTitle = russianTitle.replace(/\d+/g, '').trim();
                     const mn = [
                         {
                             title: 'Искать аниме',
