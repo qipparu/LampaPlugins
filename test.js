@@ -64,9 +64,10 @@
     };
 
     // --- PluginCard ---
-    function PluginCard(data) {
+    function PluginCard(data, userLang) {
         const pr = {id: data.id, name: data.name || 'Без названия', poster: data.poster || './img/img_broken.svg', type_display: data.type === "series" ? "SERIES" : (data.type === "movie" ? "MOVIE" : (data.type ? data.type.toUpperCase() : "MOVIE"))};
-        const item = Lampa.Template.get("LMEShikimori-Card", {img: pr.poster, type: pr.type_display, title: pr.name});
+        const displayTitle = (userLang === 'ru' ? (data.name || data.original_name) : (data.original_name || data.name)) || 'Без названия';
+        const item = Lampa.Template.get("LMEShikimori-Card", {img: pr.poster, type: pr.type_display, title: displayTitle});
         const updateFavoriteIcons = () => {
             item.find('.lmeshm-card__fav-icons').remove();
             const fc = $('<div class="lmeshm-card__fav-icons"></div>');
@@ -85,6 +86,7 @@
     function PluginComponent(object) {
         this.activity = object;
         const PRELOAD_THRESHOLD = 12;
+        const userLang = Lampa.Storage.field('language');
         let network = new Lampa.Reguest();
         let scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         let items_instances = []; let displayed_metas_ids = new Set();
@@ -245,7 +247,7 @@
             const new_card_instances = [];
 
             metasToAppend.forEach(meta => {
-                const card = new PluginCard(meta);
+                const card = new PluginCard(meta, userLang);
                 const card_render = card.render();
                 card_render.addClass('card-fade-in--initial');
 
@@ -322,7 +324,8 @@
                     const oD = card.getRawData();
                     const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: oD.type==='series'?'tv':'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
                     const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
-                    const searchTitle = (oD.name || '').replace(/\d+/g, '').trim();
+                    const titleToUse = (userLang === 'ru' ? (oD.name || oD.original_name) : (oD.original_name || oD.name)) || '';
+                    const searchTitle = titleToUse.replace(/\d+/g, '').trim();
                     const mn = [
                         {
                             title: 'Искать аниме',
