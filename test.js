@@ -392,7 +392,6 @@
                 skeleton_container.append('<div class="card-skeleton"></div>');
             }
             body.append(skeleton_container);
-            scroll.update(skeleton_container.find('.card-skeleton:first-child')[0], true);
 
             if (!isAutoRetry) auto_load_attempts = 0;
             current_api_page++;
@@ -413,7 +412,6 @@
             Promise.all([fetchDataPromise, minDelayPromise])
                 .then(([dataResult]) => {
                     this.appendCardsToDOM(dataResult.newMetas, dataResult.originalLength, dataResult.isEmptyAfterFilter);
-                    scroll.update();
                 })
                 .catch(() => {
                     body.find('.skeleton-loader-container').remove();
@@ -563,17 +561,20 @@
                 const style = document.createElement('style');
                 style.setAttribute('data-my-hhub-styles', 'true');
                 style.textContent = `
-                    .my-h-hub-plugin .category-full {
-                        display: flex;
+                    .my-h-hub-plugin .torrent-filter {
                         flex-wrap: wrap;
-                        justify-content: flex-start;
-                        gap: 1em;
+                        gap: 0.5em;
+                    }
+                    .my-h-hub-plugin .category-full {
+                        display: grid;
+                        grid-gap: 1.5rem;
+                        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
                         padding: 0 1.5em;
                     }
                     .my-h-hub-plugin .card,
                     .my-h-hub-plugin .card-skeleton {
                         margin: 0 !important;
-                        width: calc(50% - 0.5em);
+                        width: 100%;
                     }
                     .lmeshm-card__fav-icons {
                         position:absolute; top:0.3em; right:0.3em; display:flex; flex-direction:column; gap:0.2em; z-index:5;
@@ -600,11 +601,8 @@
                     @media (max-width: 480px) {
                         .my-h-hub-plugin .category-full {
                             padding: 0 0.5em;
-                            gap: 0.5em;
-                        }
-                        .my-h-hub-plugin .card,
-                        .my-h-hub-plugin .card-skeleton {
-                            width: calc(50% - 0.25em);
+                            grid-gap: 1em;
+                            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
                         }
                     }
                 `;
