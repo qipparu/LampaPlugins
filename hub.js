@@ -2,7 +2,7 @@
     'use strict';
 
     // --- API и Константы ---
-    const FLASK_API_BASE = "http://lampa.qipparu.duckdns.org/scraper";
+    const FLASK_API_BASE = "http://77.91.78.5/scraper";
     const API_CATALOG_CONFIG = {
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
@@ -42,7 +42,7 @@
     const TAG_SLUG_MAP = {"ahegao":"Ахегао","bdsm":"БДСМ","big-boobs":"Большая грудь","blow-job":"Минет","bondage":"Бондаж","paizuri":"Пайзури","censored":"С цензурой","comedy":"Комедия","cosplay":"Косплей","creampie":"Крем-пай","dark-skin":"Темная кожа","facial":"На лицо","fantasy":"Фэнтези","filming":"Съемка","footjob":"Футджоб","futanari":"Футанари","gangbang":"Гэнгбэнг","glasses":"В очках","harem":"Гарем","hd":"HD","horror":"Ужасы","incest":"Инцест","inflation":"Раздувание","lactation":"Лактация","small-boobs":"Маленькая грудь","maids":"Горничные","masturbation":"Мастурбация","milf":"Милфы","mind-break":"Свести с ума","mind-control":"Контроль сознания","monster-girl":"Монстры (девушки)","neko":"Неко","ntr":"НТР","nurses":"Медсестры","orgy":"Оргия","plot":"С сюжетом","pov":"От первого лица","pregnant":"Беременные","public-sex":"Публичный секс","rape":"Изнасилование","reverse-rape":"Обратное изнасилование","scat":"Дерьмо","schoolgirls":"Школьницы","shota":"Шота","ero":"Эротика","swimsuit":"Купальник","teacher":"Учитель","tentacles":"Тентакли","threesome":"Тройничок","toys":"Игрушки","tsundere":"Цундере","ugly-bastard":"Противный ублюдок","uncensored":"Без цензуры","vanilla":"Классика","virgin":"Девственность","watersports":"Золотой дождь","x-ray":"X-ray","yuri":"Юри"};
     const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
-    const PROXY_FOR_EXTERNAL_URLS = "https://lampa.qipparu.duckdns.org/proxy/proxy?url=";
+    const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
 
     // --- Global Language Helper ---
