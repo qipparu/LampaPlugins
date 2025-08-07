@@ -2,7 +2,7 @@
     'use strict';
 
     // --- API и Константы ---
-    const FLASK_API_BASE = "http://77.91.78.5:5000";
+    const FLASK_API_BASE = "http://77.91.78.5/scraper";
     const API_CATALOG_CONFIG = {
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
@@ -42,8 +42,41 @@
     const TAG_SLUG_MAP = {"ahegao":"Ахегао","bdsm":"БДСМ","big-boobs":"Большая грудь","blow-job":"Минет","bondage":"Бондаж","paizuri":"Пайзури","censored":"С цензурой","comedy":"Комедия","cosplay":"Косплей","creampie":"Крем-пай","dark-skin":"Темная кожа","facial":"На лицо","fantasy":"Фэнтези","filming":"Съемка","footjob":"Футджоб","futanari":"Футанари","gangbang":"Гэнгбэнг","glasses":"В очках","harem":"Гарем","hd":"HD","horror":"Ужасы","incest":"Инцест","inflation":"Раздувание","lactation":"Лактация","small-boobs":"Маленькая грудь","maids":"Горничные","masturbation":"Мастурбация","milf":"Милфы","mind-break":"Свести с ума","mind-control":"Контроль сознания","monster-girl":"Монстры (девушки)","neko":"Неко","ntr":"НТР","nurses":"Медсестры","orgy":"Оргия","plot":"С сюжетом","pov":"От первого лица","pregnant":"Беременные","public-sex":"Публичный секс","rape":"Изнасилование","reverse-rape":"Обратное изнасилование","scat":"Дерьмо","schoolgirls":"Школьницы","shota":"Шота","ero":"Эротика","swimsuit":"Купальник","teacher":"Учитель","tentacles":"Тентакли","threesome":"Тройничок","toys":"Игрушки","tsundere":"Цундере","ugly-bastard":"Противный ублюдок","uncensored":"Без цензуры","vanilla":"Классика","virgin":"Девственность","watersports":"Золотой дождь","x-ray":"X-ray","yuri":"Юри"};
     const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
-    const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5:3000/proxy?url=";
+    const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
+
+    // --- Small shared constants/helpers (no logic changes) ---
+    const SKELETON_CARD_COUNT = 6;
+    const MIN_APPEND_DELAY_MS = 400;
+
+    function buildStreamsUrlFromCompositeId(compositeId) {
+        let itemId = compositeId;
+        let streamType = 'hentai';
+        if (typeof compositeId === 'string' && compositeId.includes('::')) {
+            const parts = compositeId.split('::');
+            streamType = parts[0];
+            itemId = parts[1];
+        }
+        return STREAM_ENDPOINT_TPL
+            .replace('{type}', streamType)
+            .replace('{id}', itemId);
+    }
+
+    function getRequestOptionsWithCookie() {
+        const options = { dataType: 'json', timeout: 20000 };
+        const savedCookie = localStorage.getItem('my_plugin_cookie');
+        if (savedCookie) options.headers = { 'X-Custom-Cookie': savedCookie };
+        return options;
+    }
+
+    function computeCatalogTitle({ isSearchMode, searchQuery, isTagCatalog, currentTagSlug, currentCatalogKey }) {
+        if (isSearchMode) {
+            return getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, { query: searchQuery });
+        }
+        const titleKeySuffix = isTagCatalog ? ('tag_' + currentTagSlug) : ('cat_' + currentCatalogKey);
+        const fallbackText = isTagCatalog ? TAG_SLUG_MAP[currentTagSlug] : (CATALOG_TITLES_FALLBACK[currentCatalogKey] || currentCatalogKey);
+        return getLangText(titleKeySuffix, fallbackText);
+    }
 
     // --- Global Language Helper ---
     const getLangText = (lang_key_suffix, fallback_text_or_default, replacements = {}) => {
@@ -105,7 +138,7 @@
         const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
         let last_focused_card_element = null;
         let searchCache = {};
-        this.isSearchMode = this.activity.params && this.activity.params.search_query;
+        this.isSearchMode = !!(this.activity.params && this.activity.params.search_query);
         this.searchQuery = this.isSearchMode ? this.activity.params.search_query : '';
         this.currentCatalogKey = this.isSearchMode ? 'search' : ((this.activity.params && this.activity.params.catalog_key) ? this.activity.params.catalog_key : 'new-releases');
         let currentCatalogConfig = API_CATALOG_CONFIG[this.currentCatalogKey];
@@ -232,14 +265,13 @@
             if (isEmptyAfterFilter && can_load_more && auto_load_attempts < MAX_AUTO_LOAD_ATTEMPTS) {
                 auto_load_attempts++; this.loadNextPage(true); return;
             } else if (metasToAppend.length === 0 && !can_load_more && items_instances.length === 0) {
-                let catTitle;
-                if (this.isSearchMode) {
-                    catTitle = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, {query: this.searchQuery});
-                } else {
-                    const titleKeySuffix = isTagCatalog ? 'tag_' + currentTagSlug : 'cat_' + this.currentCatalogKey;
-                    const fallbackText = isTagCatalog ? TAG_SLUG_MAP[currentTagSlug] : (CATALOG_TITLES_FALLBACK[this.currentCatalogKey] || this.currentCatalogKey);
-                    catTitle = getLangText(titleKeySuffix, fallbackText);
-                }
+                const catTitle = computeCatalogTitle({
+                    isSearchMode: this.isSearchMode,
+                    searchQuery: this.searchQuery,
+                    isTagCatalog,
+                    currentTagSlug,
+                    currentCatalogKey: this.currentCatalogKey
+                });
                 this.empty(getLangText('empty_category', CATALOG_TITLES_FALLBACK.empty_category, {category: catTitle}));
                 return;
             }
@@ -257,17 +289,9 @@
                     last_focused_card_element = card_render[0];
 
                     const cardFlaskData = card.getRawData();
-                    let item_id_slug_for_url = cardFlaskData.id;
-                    let stream_type_for_url = "hentai";
-                    if (cardFlaskData.id.includes('::')) {
-                        const parts = cardFlaskData.id.split('::');
-                        stream_type_for_url = parts[0]; item_id_slug_for_url = parts[1];
-                    }
-                    const streamsUrl = STREAM_ENDPOINT_TPL.replace('{type}', stream_type_for_url).replace('{id}', item_id_slug_for_url);
+                    const streamsUrl = buildStreamsUrlFromCompositeId(cardFlaskData.id);
                     network.clear();
-                    let requestOptions = {dataType: 'json', timeout: 20000};
-                    const savedCookie = localStorage.getItem('my_plugin_cookie');
-                    if (savedCookie) requestOptions.headers = {'X-Custom-Cookie': savedCookie};
+                    const requestOptions = getRequestOptionsWithCookie();
 
                     this.activity.loader(true);
                     network.native(streamsUrl, fr => {
@@ -385,7 +409,7 @@
             if (!can_load_more || body.find('.skeleton-loader-container').length > 0) return;
             
             const skeleton_container = $('<div class="skeleton-loader-container"></div>');
-            for (let i = 0; i < 6; i++) {
+            for (let i = 0; i < SKELETON_CARD_COUNT; i++) {
                 skeleton_container.append('<div class="card-skeleton"></div>');
             }
             body.append(skeleton_container);
@@ -405,7 +429,7 @@
                 );
             });
 
-            const minDelayPromise = new Promise(resolve => setTimeout(resolve, 400));
+            const minDelayPromise = new Promise(resolve => setTimeout(resolve, MIN_APPEND_DELAY_MS));
 
             Promise.all([fetchDataPromise, minDelayPromise])
                 .then(([dataResult]) => {
@@ -431,14 +455,13 @@
                     } else if (isEmptyAfterFilterOnInit && can_load_more) {
                         auto_load_attempts++; this.loadNextPage(true);
                     } else {
-                        let catTitle;
-                        if (this.isSearchMode) {
-                            catTitle = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, {query: this.searchQuery});
-                        } else {
-                            const titleKeySuffix = isTagCatalog ? 'tag_' + currentTagSlug : 'cat_' + this.currentCatalogKey;
-                            const fallbackText = isTagCatalog ? TAG_SLUG_MAP[currentTagSlug] : (CATALOG_TITLES_FALLBACK[this.currentCatalogKey] || this.currentCatalogKey);
-                            catTitle = getLangText(titleKeySuffix, fallbackText);
-                        }
+                        const catTitle = computeCatalogTitle({
+                            isSearchMode: this.isSearchMode,
+                            searchQuery: this.searchQuery,
+                            isTagCatalog,
+                            currentTagSlug,
+                            currentCatalogKey: this.currentCatalogKey
+                        });
                         this.empty(getLangText('empty_category', CATALOG_TITLES_FALLBACK.empty_category, {category: catTitle}));
                     }
                 },
@@ -474,12 +497,17 @@
                 });
             });
             searchButton.on('hover:enter', () => {
-                Lampa.Input.edit({title: getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title), value: this.isSearchMode ? this.searchQuery : '', free: true, nosave: true },
-                (search_text) => {
-                    if (search_text) {
-                        const title = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, {query: search_text});
-                        Lampa.Activity.push({component: 'my_plugin_catalog', title: title, params: { search_query: search_text }});
-                    } else { Lampa.Controller.toggle('content'); }
+                Lampa.Input.edit({ title: getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title), value: this.isSearchMode ? this.searchQuery : '', free: true, nosave: true },
+                (search_text_raw) => {
+                    const normalized = (typeof search_text_raw === 'string' ? search_text_raw : (search_text_raw && search_text_raw.value) || '').trim();
+                    if (normalized.length > 0) {
+                        const title = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, { query: normalized });
+                        setTimeout(() => {
+                            Lampa.Activity.push({ component: 'my_plugin_catalog', title: title, params: { search_query: normalized } });
+                        }, 10);
+                    } else {
+                        Lampa.Controller.toggle('content');
+                    }
                 });
             });
             cookieButton.on('hover:enter', () => {
@@ -498,11 +526,21 @@
         this.create = function () {
             let initialTitle;
             if (this.isSearchMode) {
-                initialTitle = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, {query: this.searchQuery});
+                initialTitle = computeCatalogTitle({
+                    isSearchMode: true,
+                    searchQuery: this.searchQuery,
+                    isTagCatalog,
+                    currentTagSlug,
+                    currentCatalogKey: this.currentCatalogKey
+                });
             } else {
-                const titleKeySuffix = isTagCatalog ? 'tag_' + currentTagSlug : 'cat_' + this.currentCatalogKey;
-                const fallbackText = isTagCatalog ? TAG_SLUG_MAP[currentTagSlug] : (CATALOG_TITLES_FALLBACK[this.currentCatalogKey] || this.currentCatalogKey);
-                initialTitle = getLangText(titleKeySuffix, fallbackText);
+                initialTitle = computeCatalogTitle({
+                    isSearchMode: false,
+                    searchQuery: '',
+                    isTagCatalog,
+                    currentTagSlug,
+                    currentCatalogKey: this.currentCatalogKey
+                });
             }
             if(this.activity && this.activity.activity) {this.activity.activity.title = initialTitle;}
             else if (this.activity) {this.activity.title = initialTitle;}
@@ -512,14 +550,13 @@
             scroll.render().scrollTop(saved_scroll_position);
             
             if(Lampa.Activity.active() && Lampa.Activity.active().activity !== this.activity) return;
-            let currentActivityTitle;
-            if (this.isSearchMode) {
-                currentActivityTitle = getLangText('search_results_title', CATALOG_TITLES_FALLBACK.search_results_title, {query: this.searchQuery});
-            } else {
-                const titleKeySuffix = isTagCatalog ? 'tag_' + currentTagSlug : 'cat_' + this.currentCatalogKey;
-                const fallbackText = isTagCatalog ? TAG_SLUG_MAP[currentTagSlug] : (CATALOG_TITLES_FALLBACK[this.currentCatalogKey] || this.currentCatalogKey);
-                currentActivityTitle = getLangText(titleKeySuffix, fallbackText);
-            }
+            const currentActivityTitle = computeCatalogTitle({
+                isSearchMode: this.isSearchMode,
+                searchQuery: this.searchQuery,
+                isTagCatalog,
+                currentTagSlug,
+                currentCatalogKey: this.currentCatalogKey
+            });
             if(Lampa.Activity.active()) Lampa.Activity.active().title = currentActivityTitle;
             Lampa.Controller.add("content",{toggle:()=>{Lampa.Controller.collectionSet(scroll.render());let fe=false;if(last_focused_card_element&&$.contains(document.documentElement,last_focused_card_element)&&$(last_focused_card_element).is(':visible'))fe=last_focused_card_element;else if(items_instances.length>0){const fvi=items_instances.find(ci=>{const rc=ci.render();return rc&&$(rc).is(':visible')&&$.contains(body[0],rc[0])});if(fvi){fe=fvi.render()[0];last_focused_card_element=fe;}}Lampa.Controller.collectionFocus(fe,scroll.render())},left:()=>{if(Navigator.canmove("left"))Navigator.move("left");else Lampa.Controller.toggle("menu")},right:()=>Navigator.move("right"),up:()=>{if(Navigator.canmove("up"))Navigator.move("up");else Lampa.Controller.toggle("head")},down:()=>Navigator.move("down"),back:this.back});Lampa.Controller.toggle("content");
         };
@@ -618,21 +655,8 @@
                         }
 
                         let network_custom = new Lampa.Reguest();
-                        let item_id_slug_for_url = cardDataForPlugin.id;
-                        let stream_type_for_url = "hentai";
-
-                        if (cardDataForPlugin.id && cardDataForPlugin.id.includes('::')) {
-                            const parts = cardDataForPlugin.id.split('::');
-                            stream_type_for_url = parts[0];
-                            item_id_slug_for_url = parts[1];
-                        } else {
-                            item_id_slug_for_url = cardDataForPlugin.id;
-                        }
-
-                        const streamsUrl = STREAM_ENDPOINT_TPL.replace('{type}', stream_type_for_url).replace('{id}', item_id_slug_for_url);
-                        let requestOptions = {dataType: 'json', timeout: 20000};
-                        const savedCookie = localStorage.getItem('my_plugin_cookie');
-                        if (savedCookie) requestOptions.headers = {'X-Custom-Cookie': savedCookie};
+                        const streamsUrl = buildStreamsUrlFromCompositeId(cardDataForPlugin.id);
+                        const requestOptions = getRequestOptionsWithCookie();
 
                         network_custom.native(streamsUrl, (fr) => {
                             if (currentActivity && typeof currentActivity.loader === 'function') {
