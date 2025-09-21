@@ -7,6 +7,7 @@
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
         'random': { path: "/catalog/random", paginated: true },
+        'playlists': { path: "/catalog/playlists", paginated: true }, // Added Playlists API config
     };
     const API_SEARCH_ENDPOINT = "/search";
 
@@ -15,6 +16,8 @@
         'new-releases': "Новые релизы",
         'hottest': "Популярные",
         'random': "Случайные",
+        'playlists': "Плейлисты", // Added Playlists title fallback
+        'playlist_videos_title': "Видео в плейлисте: {playlist_name}", // New title for playlist video selection page
         'tags': "Теги",
         'filter_title': "Фильтр",
         'search_input_title': "Поиск по каталогу",
@@ -39,8 +42,8 @@
         'home_button_text': 'Домой'
     };
 
-    const TAG_SLUG_MAP = {"ahegao":"Ахегао","bdsm":"БДСМ","big-boobs":"Большая грудь","blow-job":"Минет","bondage":"Бондаж","paizuri":"Пайзури","censored":"С цензурой","comedy":"Комедия","cosplay":"Косплей","creampie":"Крем-пай","dark-skin":"Темная кожа","facial":"На лицо","fantasy":"Фэнтези","filming":"Съемка","footjob":"Футджоб","futanari":"Футанари","gangbang":"Гэнгбэнг","glasses":"В очках","harem":"Гарем","hd":"HD","horror":"Ужасы","incest":"Инцест","inflation":"Раздувание","lactation":"Лактация","small-boobs":"Маленькая грудь","maids":"Горничные","masturbation":"Мастурбация","milf":"Милфы","mind-break":"Свести с ума","mind-control":"Контроль сознания","monster-girl":"Монстры (девушки)","neko":"Неко","ntr":"НТР","nurses":"Медсестры","orgy":"Оргия","plot":"С сюжетом","pov":"От первого лица","pregnant":"Беременные","public-sex":"Публичный секс","rape":"Изнасилование","reverse-rape":"Обратное изнасилование","scat":"Дерьмо","schoolgirls":"Школьницы","shota":"Шота","ero":"Эротика","swimsuit":"Купальник","teacher":"Учитель","tentacles":"Тентакли","threesome":"Тройничок","toys":"Игрушки","tsundere":"Цундере","ugly-bastard":"Противный ублюдок","uncensored":"Без цензуры","vanilla":"Классика","virgin":"Девственность","watersports":"Золотой дождь","x-ray":"X-ray","yuri":"Юри"};
-    const ITEMS_PER_API_REQUEST = 47;
+    const TAG_SLUG_MAP = {"ahegao": "Ахегао", "bdsm": "БДСМ", "big-boobs": "Большая\xa0грудь", "blow-job": "Минет", "bondage": "Бондаж", "paizuri": "Пайзури", "censored": "С\xa0цензурой", "comedy": "Комедия", "cosplay": "Косплей", "creampie": "Крем-пай", "dark-skin": "Темная\xa0кожа", "facial": "На\xa0лицо", "fantasy": "Фэнтези", "filming": "Съемка", "footjob": "Футджоб", "futanari": "Футанари", "gangbang": "Гэнгбэнг", "glasses": "В\xa0очках", "harem": "Гарем", "hd": "HD", "horror": "Ужасы", "incest": "Инцест", "inflation": "Раздувание", "lactation": "Лактация", "small-boobs": "Маленькая\xa0грудь", "maids": "Горничные", "masturbation": "Мастурбация", "milf": "Милфы", "mind-break": "Свести\xa0с\xa0ума", "mind-control": "Контроль\xa0сознания", "monster-girl": "Монстры", "neko": "Неко", "ntr": "НТР", "nurses": "Медсестры", "orgy": "Оргия", "plot": "С\xa0сюжетом", "pov": "От\xa0первого\xa0лица", "pregnant": "Беременные", "public-sex": "Публичный\xa0секс", "rape": "Изнасилование", "reverse-rape": "Обратное\xa0изнасилование", "scat": "Дерьмо", "schoolgirls": "Школьницы", "shota": "Шота", "ero": "Эротика", "swimsuit": "Купальник", "teacher": "Учитель", "tentacles": "Тентакли", "threesome": "Тройничок", "toys": "Игрушки", "tsundere": "Цундере", "ugly-bastard": "Противный\xa0ублюдок", "uncensored": "Без\xa0цензуры", "vanilla": "Классика", "virgin": "Девственность", "watersports": "Золотой\xa0дождь", "x-ray": "X-ray", "yuri": "Юри"};
+	const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
     const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
@@ -101,7 +104,8 @@
         const pr = {id: data.id, name: data.name || 'Без названия', poster: data.poster || './img/img_broken.svg', type_display: data.type === "series" ? "SERIES" : (data.type === "movie" ? "MOVIE" : (data.type ? data.type.toUpperCase() : "MOVIE"))};
         
         const displayTitle = data.name || 'Без названия';
-        const item = Lampa.Template.get("LMEShikimori-Card", {img: pr.poster, type: pr.type_display, title: displayTitle});
+        const displayDescription = data.description || '';
+        const item = Lampa.Template.get("LMEShikimori-Card", {img: pr.poster, type: pr.type_display, title: displayTitle, description: displayDescription});
 
         const updateFavoriteIcons = () => {
             item.find('.lmeshm-card__fav-icons').remove();
@@ -115,6 +119,251 @@
             item.find('.LMEShikimori.card__view').append(fc);
         };
         this.updateIcons = updateFavoriteIcons; this.render = function(){return item}; this.destroy = function(){item.remove()}; this.getRawData = function(){return data};
+    }
+
+    // --- PlaylistDetailsComponent ---
+    function PlaylistDetailsComponent(object) {
+        this.activity = object;
+        const playlistId = this.activity.params.playlist_id;
+        const playlistName = this.activity.params.playlist_name;
+        const userLang = Lampa.Storage.field('language'); 
+        let network = new Lampa.Reguest();
+        let scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
+        let items_instances = [];
+        let displayed_metas_ids = new Set();
+        let saved_scroll_position = 0;
+        const html = $("<div class='LMEShikimori-module playlist-details-module'></div>");
+        const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
+        let last_focused_card_element = null;
+
+        this.fetchPlaylistVideos = function(onSuccess, onError) {
+            this.activity.loader(true);
+            const playlistDetailsUrl = FLASK_API_BASE + `/catalog/playlists/${playlistId}.json`;
+            const requestOptions = getRequestOptionsWithCookie();
+
+            network.native(playlistDetailsUrl, (playlistData) => {
+                this.activity.loader(false);
+                if (playlistData && playlistData.meta && playlistData.meta.videos) {
+                    const videos = playlistData.meta.videos.map(video => ({
+                        id: video.id,
+                        name: video.title,
+                        poster: video.thumbnail,
+                        type: "movie",
+                        original_name: video.title,
+                        source: PLUGIN_SOURCE_KEY
+                    }));
+                    onSuccess(videos);
+                } else {
+                    onError(getLangText('empty_category', CATALOG_TITLES_FALLBACK.empty_category, {category: playlistName}));
+                }
+            }, (errStatus, errData) => {
+                this.activity.loader(false);
+                console.error(`Plugin: Error fetching playlist videos for ${playlistId}`, errStatus, errData);
+                onError(getLangText('error_fetch_data', CATALOG_TITLES_FALLBACK.error_fetch_data));
+            }, false, requestOptions);
+        };
+
+        this.appendCardsToDOM = function (videosToAppend) {
+            if (videosToAppend.length === 0 && items_instances.length === 0) {
+                this.empty(getLangText('empty_category', CATALOG_TITLES_FALLBACK.empty_category, {category: playlistName}));
+                return;
+            }
+            const fragment = document.createDocumentFragment();
+            const new_card_instances = [];
+
+            videosToAppend.forEach(videoMeta => {
+                if (!displayed_metas_ids.has(videoMeta.id)) {
+                    const card = new PluginCard(videoMeta, userLang);
+                    const card_render = card.render();
+                    card_render.addClass('card-fade-in--initial');
+
+                    card_render.on("hover:enter", () => {
+                        const videoFlaskData = card.getRawData();
+                        const streamsUrl = buildStreamsUrlFromCompositeId(videoFlaskData.id);
+                        network.clear();
+                        const requestOptions = getRequestOptionsWithCookie();
+
+                        this.activity.loader(true);
+                        network.native(streamsUrl, fr => {
+                            this.activity.loader(false);
+                            if(fr && fr.streams && fr.streams.length > 0) {
+                                const pi = fr.streams.map(s => {
+                                    let st = s.name || "P";
+                                    if(s.title) st += ` - ${s.title}`;
+                                    return {title: st, stream_details: s};
+                                });
+                                Lampa.Select.show({
+                                    title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
+                                    items: pi,
+                                    onBack: () => Lampa.Controller.toggle('content'),
+                                    onSelect: si => {
+                                        const sd = si.stream_details;
+                                        const pld = {
+                                            title: videoFlaskData.name || 'Без названия',
+                                            poster: videoFlaskData.poster || '',
+                                            id: videoFlaskData.id,
+                                            name: videoFlaskData.name,
+                                            type: "movie",
+                                            source: PLUGIN_SOURCE_KEY
+                                        };
+                                        if(sd.url) {
+                                            let vu = sd.url;
+                                            vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
+                                            
+                                            pld.url = vu;
+                                            if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
+                                            if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                            Lampa.Player.play(pld);
+                                            Lampa.Player.playlist([pld]);
+                                            if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
+                                            card.updateIcons();
+                                        } else {
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
+                                        }
+                                    }
+                                });
+                            } else {
+                                if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
+                            }
+                        }, () => {
+                            this.activity.loader(false);
+                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
+                        }, false, requestOptions);
+                    });
+
+                    card_render.on("hover:focus", () => {
+                        last_focused_card_element = card_render[0];
+                        scroll.update(last_focused_card_element, true);
+                    });
+
+                    card_render.on('hover:long', () => {
+                        const oD = card.getRawData();
+                        const cdF = {id: oD.id, title: oD.name, name: oD.name, poster: oD.poster, year: oD.year||'', type: 'movie', original_name: oD.original_name||'', source: PLUGIN_SOURCE_KEY};
+                        const sT = (Lampa.Favorite&&typeof Lampa.Favorite.check==='function'?Lampa.Favorite.check(cdF):{})||{};
+                        let russianTitle = oD.name || '';
+                        if (russianTitle.includes(' / ')) {
+                            russianTitle = russianTitle.split(' / ')[0];
+                        }
+                        const searchTitle = russianTitle.replace(/\d+/g, '').trim();
+                        const mn = [
+                            {
+                                title: 'Искать аниме',
+                                search_title: searchTitle
+                            },
+                            { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
+                            { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
+                            { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
+                            { title: getLangText('menu_history', CATALOG_TITLES_FALLBACK.menu_history), where: 'history', checkbox: true, checked: sT.history }
+                        ];
+                        Lampa.Select.show({
+                            title: getLangText('title_action', CATALOG_TITLES_FALLBACK.title_action), items: mn,
+                            onBack: () => Lampa.Controller.toggle('content'),
+                            onCheck: i => { if (Lampa.Favorite && typeof Lampa.Favorite.toggle === 'function') Lampa.Favorite.toggle(i.where, cdF); card.updateIcons(); },
+                            onSelect: (selected) => {
+                                if (selected.search_title) {
+                                    Lampa.Activity.push({
+                                        component: 'my_plugin_catalog',
+                                        title: 'Поиск: ' + selected.search_title,
+                                        params: { search_query: selected.search_title }
+                                    });
+                                } else {
+                                    Lampa.Select.close();
+                                    Lampa.Controller.toggle('content');
+                                }
+                            }
+                        });
+                    });
+
+                    fragment.appendChild(card_render[0]);
+                    new_card_instances.push(card);
+                    displayed_metas_ids.add(videoMeta.id);
+                }
+            });
+
+            body.append(fragment);
+            items_instances.push(...new_card_instances);
+
+            requestAnimationFrame(() => {
+                body.find('.card-fade-in--initial').removeClass('card-fade-in--initial');
+            });
+            
+            setTimeout(() => {
+                new_card_instances.forEach(card => card.updateIcons());
+            }, 50);
+
+            if (!last_focused_card_element && items_instances.length > 0) {
+                const fvc = items_instances.find(ci => $(ci.render()).is(':visible'));
+                if (fvc) last_focused_card_element = fvc.render()[0];
+            }
+        };
+
+        this.build = function () {
+            scroll.minus();
+            scroll.onWheel = (step) => { if (!Lampa.Controller.own(this)) this.start(); if (step > 0) Navigator.move('down'); else Navigator.move('up'); };
+            
+            this.fetchPlaylistVideos(
+                (videos) => {
+                    this.appendCardsToDOM(videos);
+                    this.activity.toggle();
+                },
+                (errorMsg) => {
+                    this.empty(errorMsg);
+                }
+            );
+            scroll.append(body); html.append(scroll.render(true));
+        };
+
+        this.create = function () {
+            this.activity.title = getLangText('playlist_videos_title', CATALOG_TITLES_FALLBACK.playlist_videos_title, { playlist_name: playlistName });
+            this.build();
+        };
+
+        this.start = function () {
+            scroll.render().scrollTop(saved_scroll_position);
+            
+            if(Lampa.Activity.active() && Lampa.Activity.active().activity !== this.activity) return;
+
+            Lampa.Controller.add("content",{
+                toggle:()=>{
+                    Lampa.Controller.collectionSet(scroll.render());
+                    let fe=false;
+                    if(last_focused_card_element && $.contains(document.documentElement,last_focused_card_element) && $(last_focused_card_element).is(':visible')) fe=last_focused_card_element;
+                    else if(items_instances.length>0){
+                        const fvi=items_instances.find(ci=>{const rc=ci.render();return rc&&$(rc).is(':visible')&&$.contains(body[0],rc[0])});
+                        if(fvi){fe=fvi.render()[0];last_focused_card_element=fe;}
+                    }
+                    Lampa.Controller.collectionFocus(fe,scroll.render())
+                },
+                left:()=>{if(Navigator.canmove("left"))Navigator.move("left");else Lampa.Controller.toggle("menu")},
+                right:()=>Navigator.move("right"),
+                up:()=>{if(Navigator.canmove("up"))Navigator.move("up");else Lampa.Controller.toggle("head")},
+                down:()=>Navigator.move("down"),
+                back:this.back
+            });
+            Lampa.Controller.toggle("content");
+        };
+
+        this.pause = function () {
+            saved_scroll_position = scroll.render().scrollTop();
+        };
+        this.stop = function () {};
+        this.render = function () { return html; };
+        this.destroy = function () {
+            if(network) network.clear(); if(scroll) scroll.destroy(); this.clear(); html.remove();
+            items_instances=null;displayed_metas_ids=null;network=null;scroll=null;last_focused_card_element=null;
+            saved_scroll_position = 0;
+        };
+        this.back = () => Lampa.Activity.backward();
+        this.empty = function (msg) {
+            const e = new Lampa.Empty();
+            e.msg(msg || getLangText('empty_category', CATALOG_TITLES_FALLBACK.empty_category, {category: playlistName}));
+            html.empty().append(e.render(true));
+            this.start = e.start;
+            this.activity.loader(false);
+            this.activity.toggle();
+        };
+        this.clear = function() { items_instances.forEach(i=>i.destroy());items_instances=[];displayed_metas_ids.clear();body.empty(); };
     }
 
     // --- PluginComponent ---
@@ -133,6 +382,7 @@
                         <div class='plugin__home simple-button simple-button--filter selector'>${getLangText('home_button_text', CATALOG_TITLES_FALLBACK.home_button_text)}</div>
                         <div class='plugin__filter simple-button simple-button--filter selector'>${getLangText('filter_title', CATALOG_TITLES_FALLBACK.filter_title)}</div>
                         <div class='plugin__search simple-button simple-button--filter selector'>${getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title)}</div>
+                        <div class='plugin__playlists simple-button simple-button--filter selector'>${getLangText('playlists', CATALOG_TITLES_FALLBACK.playlists)}</div>
                         <div class='plugin__cookie simple-button simple-button--filter selector'>Авторизация Cookie</div>
                        </div>`);
         const body = $('<div class="LMEShikimori-catalog--list category-full"></div>');
@@ -176,6 +426,8 @@
                     urlToFetch = FLASK_API_BASE + API_SEARCH_ENDPOINT + `?q=${encodeURIComponent(this.searchQuery)}&page=${page_to_fetch}`;
                 } else if (isTagCatalog) {
                     urlToFetch = FLASK_API_BASE + `/catalog/tag/${currentTagSlug}?page=${page_to_fetch}`;
+                } else if (this.currentCatalogKey === 'playlists') {
+                    urlToFetch = FLASK_API_BASE + API_CATALOG_CONFIG['playlists'].path + `?page=${page_to_fetch}`;
                 } else if (currentCatalogConfig && currentCatalogConfig.path) {
                     urlToFetch = FLASK_API_BASE + currentCatalogConfig.path;
                     if (currentCatalogConfig.paginated && !isRandomCategory) {
@@ -185,7 +437,7 @@
                     continue;
                 }
 
-                if (!this.isSearchMode && !isTagCatalog && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
+                if (!this.isSearchMode && !isTagCatalog && this.currentCatalogKey !== 'playlists' && currentCatalogConfig && !currentCatalogConfig.paginated && page_to_fetch > 1) {
                     continue;
                 }
 
@@ -225,7 +477,7 @@
 
                 combinedMetasRaw.forEach(meta => {
                     if (meta && meta.id && !displayed_metas_ids.has(meta.id)) {
-                        if (meta.type !== "series") {
+                        if (meta.type !== "series" || meta.id.startsWith('pl_')) {
                             uniqueNewMetas.push(meta);
                             displayed_metas_ids.add(meta.id);
                         }
@@ -250,17 +502,28 @@
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
             body.find('.skeleton-loader-container').remove();
 
-            const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated);
+            // --- ИСПРАВЛЕННЫЙ БЛОК ЛОГИКИ ПАГИНАЦИИ ---
+            const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated) || this.currentCatalogKey === 'playlists';
             
             if (this.currentCatalogKey === 'random') {
                 can_load_more = true;
             } else if (isPaginating) {
-                if (originalApiBatchLength < ITEMS_PER_API_REQUEST) {
-                    can_load_more = false;
+                if (this.currentCatalogKey === 'playlists') {
+                    // Для плейлистов используется более безопасная логика, так как их размер страницы отличается.
+                    // Подгрузка остановится только когда сервер вернет пустой список.
+                    can_load_more = originalApiBatchLength > 0;
+                } else {
+                    // Для остальных категорий используется стандартная, более эффективная логика,
+                    // так как мы знаем размер их страницы (ITEMS_PER_API_REQUEST).
+                    if (originalApiBatchLength < ITEMS_PER_API_REQUEST) {
+                        can_load_more = false;
+                    }
                 }
             } else {
+                // Для непагинируемых категорий.
                 can_load_more = false;
             }
+            // --- КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ---
 
             if (isEmptyAfterFilter && can_load_more && auto_load_attempts < MAX_AUTO_LOAD_ATTEMPTS) {
                 auto_load_attempts++; this.loadNextPage(true); return;
@@ -289,51 +552,63 @@
                     last_focused_card_element = card_render[0];
 
                     const cardFlaskData = card.getRawData();
-                    const streamsUrl = buildStreamsUrlFromCompositeId(cardFlaskData.id);
                     network.clear();
                     const requestOptions = getRequestOptionsWithCookie();
 
-                    this.activity.loader(true);
-                    network.native(streamsUrl, fr => {
-                        this.activity.loader(false);
-                        if(fr && fr.streams && fr.streams.length > 0) {
-                            const pi = fr.streams.map(s => {
-                                let st = s.name || "P";
-                                if(s.title) st += ` - ${s.title}`;
-                                return {title: st, stream_details: s};
-                            });
-                            Lampa.Select.show({
-                                title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
-                                items: pi,
-                                onBack: () => Lampa.Controller.toggle('content'),
-                                onSelect: si => {
-                                    const sd = si.stream_details;
-                                    const pld = {title: cardFlaskData.name || 'Без названия', poster: cardFlaskData.poster || '', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type === 'series' ? 'tv' : 'movie', source: PLUGIN_SOURCE_KEY};
-                                    if(sd.url) {
-                                        let vu = sd.url;
-                                        if(true) { // Assuming proxy is always enabled based on original logic
+                    const isPlaylistCard = cardFlaskData.id && cardFlaskData.id.startsWith('pl_') && cardFlaskData.type === 'series';
+
+                    if (isPlaylistCard) {
+                        Lampa.Activity.push({
+                            component: 'my_plugin_playlist_details',
+                            title: cardFlaskData.name,
+                            params: {
+                                playlist_id: cardFlaskData.id,
+                                playlist_name: cardFlaskData.name
+                            }
+                        });
+                    } else {
+                        const streamsUrl = buildStreamsUrlFromCompositeId(cardFlaskData.id);
+                        this.activity.loader(true);
+                        network.native(streamsUrl, fr => {
+                            this.activity.loader(false);
+                            if(fr && fr.streams && fr.streams.length > 0) {
+                                const pi = fr.streams.map(s => {
+                                    let st = s.name || "P";
+                                    if(s.title) st += ` - ${s.title}`;
+                                    return {title: st, stream_details: s};
+                                });
+                                Lampa.Select.show({
+                                    title: getLangText('player_select_title', CATALOG_TITLES_FALLBACK.player_select_title),
+                                    items: pi,
+                                    onBack: () => Lampa.Controller.toggle('content'),
+                                    onSelect: si => {
+                                        const sd = si.stream_details;
+                                        const pld = {title: cardFlaskData.name || 'Без названия', poster: cardFlaskData.poster || '', id: cardFlaskData.id, name: cardFlaskData.name, type: cardFlaskData.type === 'series' ? 'tv' : 'movie', original_name: cardFlaskData.original_name || '', source: PLUGIN_SOURCE_KEY};
+                                        if(sd.url) {
+                                            let vu = sd.url;
                                             vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
                                             if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
+                                            
+                                            pld.url = vu;
+                                            if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
+                                            if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                            Lampa.Player.play(pld);
+                                            Lampa.Player.playlist([pld]);
+                                            if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
+                                            card.updateIcons();
+                                        } else {
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
                                         }
-                                        pld.url = vu;
-                                        if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
-                                        if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
-                                        Lampa.Player.play(pld);
-                                        Lampa.Player.playlist([pld]);
-                                        if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
-                                        card.updateIcons();
-                                    } else {
-                                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
                                     }
-                                }
-                            });
-                        } else {
-                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
-                        }
-                    }, () => {
-                        this.activity.loader(false);
-                        if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
-                    }, false, requestOptions);
+                                });
+                            } else {
+                                if(Lampa.Noty) Lampa.Noty.show(getLangText('player_no_streams_found', CATALOG_TITLES_FALLBACK.player_no_streams_found));
+                            }
+                        }, () => {
+                            this.activity.loader(false);
+                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
+                        }, false, requestOptions);
+                    }
                 };
                 card_render.on("hover:enter", handleCardEnter);
 
@@ -341,7 +616,7 @@
                     last_focused_card_element = card_render[0];
                     scroll.update(last_focused_card_element, true);
                     const cardIndex = items_instances.findIndex(inst => inst === card);
-                    if (cardIndex > -1 && items_instances.length - cardIndex <= PRELOAD_THRESHOLD) {
+                    if (cardIndex > -1 && can_load_more && items_instances.length - cardIndex <= PRELOAD_THRESHOLD) {
                         this.loadNextPage(false);
                     }
                 });
@@ -393,7 +668,6 @@
             body.append(fragment);
             items_instances.push(...new_card_instances);
 
-            // Batch DOM updates for performance
             requestAnimationFrame(() => {
                 body.find('.card-fade-in--initial').removeClass('card-fade-in--initial');
             });
@@ -474,15 +748,20 @@
             const homeButton = head.find('.plugin__home');
             const filterButton = head.find('.plugin__filter');
             const searchButton = head.find('.plugin__search');
+            const playlistsButton = head.find('.plugin__playlists');
             const cookieButton = head.find('.plugin__cookie');
+
             homeButton.on('hover:enter', () => {
                 const mainDefaultKey = Object.keys(API_CATALOG_CONFIG).find(k => API_CATALOG_CONFIG[k].default_main) || 'new-releases';
                 Lampa.Activity.push({component: 'my_plugin_catalog', title: getLangText('cat_' + mainDefaultKey, CATALOG_TITLES_FALLBACK[mainDefaultKey]), params: { catalog_key: mainDefaultKey }});
             });
+
             filterButton.on('hover:enter', () => {
                 const filterMenu = [];
                 Object.keys(API_CATALOG_CONFIG).forEach(catKey => {
-                    filterMenu.push({title: getLangText('cat_' + catKey, CATALOG_TITLES_FALLBACK[catKey] || catKey), catalog_key: catKey, is_tag_menu: false});
+                    if (catKey !== 'playlists') {
+                        filterMenu.push({title: getLangText('cat_' + catKey, CATALOG_TITLES_FALLBACK[catKey] || catKey), catalog_key: catKey, is_tag_menu: false});
+                    }
                 });
                 filterMenu.push({title: getLangText('tags', CATALOG_TITLES_FALLBACK.tags), is_tag_menu: true});
                 Lampa.Select.show({title: getLangText('filter_title', CATALOG_TITLES_FALLBACK.filter_title), items: filterMenu, onBack: () => { Lampa.Controller.toggle('content'); },
@@ -496,6 +775,7 @@
                     }
                 });
             });
+
             searchButton.on('hover:enter', () => {
                 Lampa.Input.edit({ title: getLangText('search_input_title', CATALOG_TITLES_FALLBACK.search_input_title), value: this.isSearchMode ? this.searchQuery : '', free: true, nosave: true },
                 (search_text_raw) => {
@@ -510,6 +790,15 @@
                     }
                 });
             });
+
+            playlistsButton.on('hover:enter', () => {
+                Lampa.Activity.push({
+                    component: 'my_plugin_catalog',
+                    title: getLangText('playlists', CATALOG_TITLES_FALLBACK.playlists),
+                    params: { catalog_key: 'playlists' }
+                });
+            });
+
             cookieButton.on('hover:enter', () => {
                 const currentCookie = localStorage.getItem('my_plugin_cookie') || '';
                 Lampa.Input.edit({title: getLangText('cookie_set_title', CATALOG_TITLES_FALLBACK.cookie_set_title), value: currentCookie, free: true, nosave: true, desc: getLangText('cookie_set_descr', CATALOG_TITLES_FALLBACK.cookie_set_descr)},
@@ -585,13 +874,14 @@
             if (criticalMissing.length > 0) {console.error('Plugin: Critical Lampa dependencies missing!', criticalMissing); if(window.Lampa && Lampa.Noty && typeof Lampa.Noty.show === 'function') Lampa.Noty.show('Ошибка плагина: Отсутствуют компоненты Lampa: ' + criticalMissing.join(', ')); return;}
             window.plugin_mycustom_catalog_ready = true;
 
-            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .skeleton-loader-container { display: contents; } .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } @media (max-width: 768px){.LMEShikimori-catalog--list{padding: 0 0.5em;}.LMEShikimori.card, .card-skeleton{width:48%;margin-bottom:1em;}.LMEShikimori.card__title{font-size:0.9em;}.LMEShikimori-head.torrent-filter{flex-wrap:wrap;margin-left:0.5em;}} @media (max-width: 480px){.LMEShikimori.card, .card-skeleton{width:47%;}} .lampa-layer{transition:opacity .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}.lampa-layer--show{opacity:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.lampa-layer:not(.lampa-layer--show){opacity:0;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px)} \n</style>");
+            Lampa.Template.add('LMEShikimoriStyle', "<style>\n .LMEShikimori-catalog--list.category-full{-webkit-box-pack:justify !important;-webkit-justify-content:space-between !important;-ms-flex-pack:justify !important;justify-content:space-between !important}.LMEShikimori-head.torrent-filter{margin-left:1.5em; display: flex; gap: 1em;}.LMEShikimori.card__type{background:#ff4242;color:#fff} .lmeshm-card__fav-icons{position:absolute;top:0.3em;right:0.3em;display:flex;flex-direction:column;gap:0.2em;z-index:5;} .lmeshm-card__fav-icons .card__icon{background-color:rgba(0,0,0,0.5);border-radius:0.2em;padding:0.1em;} .LMEShikimori.card { transition: opacity 0.4s ease-out, transform 0.4s ease-out; } .card-fade-in--initial { opacity: 0; transform: translateY(20px); } .skeleton-loader-container { display: contents; } .card-skeleton { background: rgba(255, 255, 255, 0.1); border-radius: 0.3em; height: 180px; position: relative; overflow: hidden; } .card-skeleton::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent); animation: shimmer 1.5s infinite; } @keyframes shimmer { 100% { left: 100%; } } @media (max-width: 768px){.LMEShikimori-catalog--list{padding: 0 0.5em;}.LMEShikimori.card, .card-skeleton{width:48%;margin-bottom:1em;}.LMEShikimori.card__title{font-size:0.9em;}.LMEShikimori-head.torrent-filter{flex-wrap:wrap;margin-left:0.5em;}} @media (max-width: 480px){.LMEShikimori.card, .card-skeleton{width:47%;}} .lampa-layer{transition:opacity .3s ease,backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease}.lampa-layer--show{opacity:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}.lampa-layer:not(.lampa-layer--show){opacity:0;backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px)} \n /* Plugin-specific styles */ \n .LMEShikimori.card__description { font-size: 0.75em; color: rgba(255, 255, 255, 0.6); padding: 0 0.5em 0.5em 0.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; z-index: 1; } \n</style>");
             Lampa.Template.add("LMEShikimori-Card", `
             <div class="LMEShikimori card selector layer--visible layer--render">
                 <div class="LMEShikimori card__view">
                     <img src="{img}" class="LMEShikimori card__img" />
                 </div>
                 <div class="LMEShikimori card__title">{title}</div>
+                <div class="LMEShikimori card__description">{description}</div>
             </div>`);
             if ($('style[data-lmeshikimori-styles]').length === 0) { const s=$(Lampa.Template.get('LMEShikimoriStyle',{},true));s.attr('data-lmeshikimori-styles','true');$('body').append(s); }
 
@@ -600,11 +890,14 @@
                 plugin_all_main_title: CATALOG_TITLES_FALLBACK.all_main_title,
                 plugin_filter_title: CATALOG_TITLES_FALLBACK.filter_title,
                 plugin_tags: CATALOG_TITLES_FALLBACK.tags,
+                plugin_playlists: CATALOG_TITLES_FALLBACK.playlists,
+                plugin_playlist_videos_title: CATALOG_TITLES_FALLBACK.playlist_videos_title,
                 plugin_search_input_title: CATALOG_TITLES_FALLBACK.search_input_title,
                 plugin_search_results_title: CATALOG_TITLES_FALLBACK.search_results_title,
                 plugin_cat_new_releases: CATALOG_TITLES_FALLBACK['new-releases'],
                 plugin_cat_hottest: CATALOG_TITLES_FALLBACK.hottest,
                 plugin_cat_random: CATALOG_TITLES_FALLBACK.random,
+                plugin_cat_playlists: CATALOG_TITLES_FALLBACK.playlists,
                 plugin_empty_catalog: CATALOG_TITLES_FALLBACK.empty_catalog,
                 plugin_empty_category: CATALOG_TITLES_FALLBACK.empty_category,
                 plugin_error_fetch_data: CATALOG_TITLES_FALLBACK.error_fetch_data,
@@ -632,31 +925,38 @@
             if (Lampa.Activity && typeof Lampa.Activity.push === 'function') {
                 const originalLampaActivityPush = Lampa.Activity.push;
                 Lampa.Activity.push = function(new_activity_params) {
-                    let isOurCard = false;
+                    const isOurPluginComponentPush = new_activity_params.component && (new_activity_params.component === 'my_plugin_catalog' || new_activity_params.component === 'my_plugin_playlist_details');
+                    
+                    let isOurCardForPlayback = false;
                     let cardDataForPlugin = null;
+
                     if (new_activity_params && new_activity_params.params && new_activity_params.params.source === PLUGIN_SOURCE_KEY) {
-                        isOurCard = true;
+                        isOurCardForPlayback = true;
                         cardDataForPlugin = new_activity_params.params;
                     } else if (new_activity_params && new_activity_params.params && new_activity_params.params.card && new_activity_params.params.card.source === PLUGIN_SOURCE_KEY) {
-                        isOurCard = true;
+                        isOurCardForPlayback = true;
                         cardDataForPlugin = new_activity_params.params.card;
                     } else if (new_activity_params && new_activity_params.card && new_activity_params.card.source === PLUGIN_SOURCE_KEY) {
-                        isOurCard = true;
+                        isOurCardForPlayback = true;
                         cardDataForPlugin = new_activity_params.card;
                     } else if (new_activity_params && new_activity_params.source === PLUGIN_SOURCE_KEY) {
-                         isOurCard = true;
+                         isOurCardForPlayback = true;
                          cardDataForPlugin = new_activity_params;
                     }
 
-                    if (isOurCard && cardDataForPlugin) {
+                    if (isOurPluginComponentPush) {
+                        return originalLampaActivityPush.apply(Lampa.Activity, arguments);
+                    }
+
+                    if (isOurCardForPlayback && cardDataForPlugin) {
                         const currentActivity = Lampa.Activity.active();
                         if (currentActivity && typeof currentActivity.loader === 'function') {
                             currentActivity.loader(true);
                         }
-
                         let network_custom = new Lampa.Reguest();
-                        const streamsUrl = buildStreamsUrlFromCompositeId(cardDataForPlugin.id);
                         const requestOptions = getRequestOptionsWithCookie();
+                        
+                        const streamsUrl = buildStreamsUrlFromCompositeId(cardDataForPlugin.id);
 
                         network_custom.native(streamsUrl, (fr) => {
                             if (currentActivity && typeof currentActivity.loader === 'function') {
@@ -682,10 +982,9 @@
                                         };
                                         if (stream_detail.url) {
                                             let video_url = stream_detail.url;
-                                            if (true) {
-                                                video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
-                                                if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
-                                            }
+                                            video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
+                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
+                                            
                                             pld_for_player.url = video_url;
                                             if (Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld_for_player.timeline = Lampa.Timeline.view(pld_for_player.id) || {};
                                             Lampa.Player.play(pld_for_player);
@@ -697,6 +996,7 @@
                                         } else {
                                             Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
                                         }
+                                        Lampa.Select.close();
                                     }
                                 });
                             } else {
@@ -709,7 +1009,7 @@
                             console.error("Plugin (Activity.push intercept): Error fetching streams", es, ed);
                             Lampa.Noty.show(getLangText('player_streams_fetch_error', CATALOG_TITLES_FALLBACK.player_streams_fetch_error));
                         }, false, requestOptions);
-                        return; 
+                        return;
                     }
                     return originalLampaActivityPush.apply(Lampa.Activity, arguments);
                 };
@@ -719,6 +1019,7 @@
             }
             
             Lampa.Component.add('my_plugin_catalog', PluginComponent);
+            Lampa.Component.add('my_plugin_playlist_details', PlaylistDetailsComponent);
             addMenuItem();
         }
 
