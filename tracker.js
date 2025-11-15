@@ -3,9 +3,10 @@
     const WATCH_THRESHOLD = 90;  
       
     let sentEpisodes = new Set();  
+    let pendingContent = null; // Сохраняем данные при запуске  
   
     /**  
-     * Получить данные о просмотре  
+     * Получить данные о просмотре из localStorage  
      */  
     function getWatchedData() {  
         try {  
@@ -30,22 +31,6 @@
     }  
   
     /**  
-     * Получить данные о текущем контенте из активности  
-     */  
-    function getCurrentMovie() {  
-        try {  
-            const activity = Lampa.Activity.active();  
-            if (!activity) return null;  
-              
-            // Проверяем разные возможные места хранения данных о контенте  
-            return activity.movie || activity.card || null;  
-        } catch (error) {  
-            console.error('[DeepWiki] Ошибка получения данных о контенте:', error);  
-            return null;  
-        }  
-    }  
-  
-    /**  
      * Получить Timeline данные  
      */  
     function getTimelineData(watchedData, movie) {  
@@ -59,10 +44,8 @@
                 return null;  
             }  
   
-            // Используем original_title или original_name  
             const originalTitle = movie.original_title || movie.original_name || '';  
   
-            // Генерируем хеш правильно  
             let hash;  
             if (watchedData.season && watchedData.episode) {  
                 const hashStr = [  
@@ -137,10 +120,52 @@
     }  
   
     /**  
-     * Обработчик закрытия плеера  
+     * Обработчик запуска плеера - сохраняем данные о контенте  
+     */  
+    function onPlayerStart(data) {  
+        console.log('[DeepWiki] Плеер запущен, сохраняем данные о контенте');  
+          
+        // Получаем данные о фильме из активности или из data.card  
+        const activity = Lampa.Activity.active();  
+        const movie = data.card || activity.movie || activity.card;  
+          
+        if (movie) {  
+            pendingContent = {  
+                movie: movie,  
+                timestamp: Date.now()  
+            };  
+            console.log('[DeepWiki] Сохранены данные:', movie.original_title || movie.original_name);  
+        }  
+    }  
+  
+    /**  
+     * Периодическая проверка Timeline для отправки вебхука  
+     */  
+    function checkTimeline() {  
+        if (!pendingContent) return;  
+          
+        const watchedData = getWatchedData();  
+        if (!watchedData) return;  
+          
+        const timelineData = getTimelineData(watchedData, pendingContent.movie);  
+        if (!timelineData) return;  
+          
+        const episodeKey = `${timelineData.tmdb_id}_${watchedData.season}_${watchedData.episode}`;  
+          
+        // Проверяем порог и отправляем вебхук  
+        if (timelineData.percent >= WATCH_THRESHOLD && !sentEpisodes.has(episodeKey)) {  
+            console.log('[DeepWiki] Порог достигнут:', timelineData.percent + '%');  
+            sendWebhook(watchedData, timelineData);  
+            sentEpisodes.add(episodeKey);  
+            pendingContent = null; // Очищаем после отправки  
+        }  
+    }  
+  
+    /**  
+     * Обработчик закрытия плеера (для встроенного плеера)  
      */  
     function onPlayerDestroy() {  
-        console.log('[DeepWiki] Плеер закрыт, ожидание сохранения Timeline...');  
+        console.log('[DeepWiki] Плеер закрыт, проверка Timeline...');  
           
         setTimeout(() => {  
             const watchedData = getWatchedData();  
@@ -149,10 +174,12 @@
                 return;  
             }  
               
-            // Получаем данные о контенте из текущей активности  
-            const movie = getCurrentMovie();  
+            // Пытаемся получить данные из активности  
+            const activity = Lampa.Activity.active();  
+            const movie = pendingContent?.movie || activity.movie || activity.card;  
+              
             if (!movie) {  
-                console.log('[DeepWiki] Нет данных о контенте в активности');  
+                console.log('[DeepWiki] Нет данных о контенте');  
                 return;  
             }  
               
@@ -170,9 +197,9 @@
                 sentEpisodes.add(episodeKey);  
             } else if (timelineData.percent < WATCH_THRESHOLD) {  
                 console.log('[DeepWiki] Порог не достигнут:', timelineData.percent + '%');  
-            } else {  
-                console.log('[DeepWiki] Уже отправлено для этого эпизода');  
             }  
+              
+            pendingContent = null;  
         }, 1000);  
     }  
   
@@ -180,10 +207,16 @@
      * Инициализация  
      */  
     function init() {  
-        // Подписываемся на закрытие плеера  
+        // Подписываемся на запуск плеера (срабатывает для всех плееров)  
+        Lampa.Player.listener.follow('start', onPlayerStart);  
+          
+        // Подписываемся на закрытие плеера (только для встроенного)  
         Lampa.Player.listener.follow('destroy', onPlayerDestroy);  
           
-        console.log('[DeepWiki] Плагин инициализирован');  
+        // Периодическая проверка Timeline каждые 30 секунд  
+        setInterval(checkTimeline, 30000);  
+          
+        console.log('[DeepWiki] Плагин инициализирован для Apple TV');  
     }  
   
     if (window.Lampa && window.Lampa.Player) {  
