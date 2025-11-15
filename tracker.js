@@ -1,5 +1,5 @@
 (function() {  
-    const DEEPWIKI_WEBHOOK_URL = 'https://webhook.site/3e380ca8-e908-4b1e-a533-8521d819c5fb';  
+    const DEEPWIKI_WEBHOOK_URL = 'http://77.91.78.5/scraper/catalog/hottest';  
     const WATCH_THRESHOLD = 90;  
     const CHECK_INTERVAL = 10000; // Проверяем каждые 10 секунд  
       
