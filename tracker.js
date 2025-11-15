@@ -1,119 +1,60 @@
 (function() {  
     const DEEPWIKI_WEBHOOK_URL = 'http://77.91.78.5/scraper/catalog/hottest';  
-    const WATCH_THRESHOLD = 90;  
-    const CHECK_INTERVAL = 10000; // Проверяем каждые 10 секунд  
+    const CHECK_INTERVAL = 5000; // Проверяем каждые 5 секунд  
       
-    let sentEpisodes = new Set();  
-    let lastFileView = {};  
+    let lastWatchedKey = null;  
   
     /**  
-     * Получить original_title из активности  
+     * Получить уникальный ключ текущего просмотра  
      */  
-    function getOriginalTitle() {  
+    function getWatchedKey() {  
         try {  
-            const activity = Lampa.Activity.active();  
-            if (!activity) return null;  
+            const watchedLastRaw = localStorage.getItem('online_watched_last');  
+            if (!watchedLastRaw) return null;  
               
-            const movie = activity.movie || activity.card;  
-            return movie ? (movie.original_title || movie.original_name) : null;  
+            const watchedLast = JSON.parse(watchedLastRaw);  
+            const tmdbHash = Object.keys(watchedLast)[0];  
+            const data = watchedLast[tmdbHash];  
+              
+            if (!tmdbHash || !data) return null;  
+              
+            // Создаем уникальный ключ для отслеживания  
+            return `${tmdbHash}_${data.season || 0}_${data.episode || 0}`;  
         } catch (error) {  
             return null;  
         }  
     }  
   
     /**  
-     * Проверить изменения в file_view  
+     * Получить данные для вебхука  
      */  
-    function checkFileView() {  
+    function getWebhookData() {  
         try {  
-            const fileViewRaw = localStorage.getItem('file_view');  
-            if (!fileViewRaw) return;  
+            const watchedLastRaw = localStorage.getItem('online_watched_last');  
+            if (!watchedLastRaw) return null;  
               
-            const fileView = JSON.parse(fileViewRaw);  
-            const originalTitle = getOriginalTitle();  
+            const watchedLast = JSON.parse(watchedLastRaw);  
+            const tmdbHash = Object.keys(watchedLast)[0];  
+            const data = watchedLast[tmdbHash];  
               
-            if (!originalTitle) return;  
+            if (!tmdbHash || !data) return null;  
               
-            // Проверяем каждый хеш в file_view  
-            for (const hash in fileView) {  
-                const data = fileView[hash];  
-                  
-                // Пропускаем если уже обработали  
-                if (lastFileView[hash] && lastFileView[hash].percent === data.percent) {  
-                    continue;  
-                }  
-                  
-                // Проверяем порог  
-                if (data.percent >= WATCH_THRESHOLD) {  
-                    // Получаем данные о серии из online_watched_last  
-                    const watchedLastRaw = localStorage.getItem('online_watched_last');  
-                    if (!watchedLastRaw) continue;  
-                      
-                    const watchedLast = JSON.parse(watchedLastRaw);  
-                    const tmdbHash = Object.keys(watchedLast)[0];  
-                    const episodeData = watchedLast[tmdbHash];  
-                      
-                    if (!episodeData) continue;  
-                      
-                    // Проверяем что хеш соответствует текущему контенту  
-                    let expectedHash;  
-                    if (episodeData.season && episodeData.episode) {  
-                        const hashStr = [  
-                            episodeData.season,  
-                            episodeData.season > 10 ? ':' : '',  
-                            episodeData.episode,  
-                            originalTitle  
-                        ].join('');  
-                        expectedHash = Lampa.Utils.hash(hashStr);  
-                    } else {  
-                        expectedHash = Lampa.Utils.hash(originalTitle);  
-                    }  
-                      
-                    if (hash !== expectedHash) continue;  
-                      
-                    // Создаем уникальный ключ для эпизода  
-                    const activity = Lampa.Activity.active();  
-                    const movie = activity.movie || activity.card;  
-                    const tmdbId = movie ? movie.id : null;  
-                      
-                    if (!tmdbId) continue;  
-                      
-                    const episodeKey = episodeData.season   
-                        ? `${tmdbId}_${episodeData.season}_${episodeData.episode}`  
-                        : `${tmdbId}`;  
-                      
-                    // Отправляем вебхук если еще не отправляли  
-                    if (!sentEpisodes.has(episodeKey)) {  
-                        console.log('[DeepWiki] Порог достигнут:', {  
-                            tmdb_id: tmdbId,  
-                            season: episodeData.season,  
-                            episode: episodeData.episode,  
-                            percent: data.percent,  
-                            duration: data.duration,  
-                            time: data.time  
-                        });  
-                          
-                        sendWebhook({  
-                            tmdb_id: tmdbId,  
-                            season: episodeData.season,  
-                            episode: episodeData.episode,  
-                            duration: Math.round(data.duration),  
-                            time_watched: Math.round(data.time),  
-                            percent: data.percent  
-                        });  
-                          
-                        sentEpisodes.add(episodeKey);  
-                    }  
-                }  
-                  
-                // Сохраняем текущее состояние  
-                lastFileView[hash] = {  
-                    percent: data.percent,  
-                    time: data.time  
-                };  
-            }  
+            // Получаем TMDB ID из хеша (это сложно, поэтому используем активность)  
+            const activity = Lampa.Activity.active();  
+            const movie = activity?.movie || activity?.card;  
+              
+            if (!movie) return null;  
+              
+            return {  
+                tmdb_id: movie.id,  
+                season: data.season,  
+                episode: data.episode,  
+                balanser: data.balanser,  
+                voice_name: data.voice_name  
+            };  
         } catch (error) {  
-            console.error('[DeepWiki] Ошибка проверки file_view:', error);  
+            console.error('[DeepWiki] Ошибка получения данных:', error);  
+            return null;  
         }  
     }  
   
@@ -128,9 +69,8 @@
   
         const payload = {  
             tmdb_id: data.tmdb_id,  
-            duration: data.duration,  
-            time_watched: data.time_watched,  
-            percent: data.percent  
+            balanser: data.balanser,  
+            voice_name: data.voice_name  
         };  
           
         if (data.season && data.episode) {  
@@ -153,13 +93,37 @@
     }  
   
     /**  
+     * Проверка изменений  
+     */  
+    function checkChanges() {  
+        const currentKey = getWatchedKey();  
+          
+        if (!currentKey) return;  
+          
+        // Если ключ изменился - пользователь выбрал новый эпизод  
+        if (currentKey !== lastWatchedKey) {  
+            console.log('[DeepWiki] Обнаружен новый эпизод:', currentKey);  
+              
+            const webhookData = getWebhookData();  
+            if (webhookData) {  
+                sendWebhook(webhookData);  
+            }  
+              
+            lastWatchedKey = currentKey;  
+        }  
+    }  
+  
+    /**  
      * Инициализация  
      */  
     function init() {  
-        // Периодическая проверка file_view  
-        setInterval(checkFileView, CHECK_INTERVAL);  
+        // Получаем начальное состояние  
+        lastWatchedKey = getWatchedKey();  
           
-        console.log('[DeepWiki] Плагин инициализирован (режим Apple TV)');  
+        // Запускаем периодическую проверку  
+        setInterval(checkChanges, CHECK_INTERVAL);  
+          
+        console.log('[DeepWiki] Плагин запущен (режим Apple TV - отслеживание выбора эпизодов)');  
     }  
   
     if (window.Lampa) {  
