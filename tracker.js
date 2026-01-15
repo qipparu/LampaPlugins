@@ -1,10 +1,10 @@
 /**
  * Плагин для Lampa
- * Заменяет "1Сейчас смотрят" на главной странице на историю просмотров пользователя
+ * Добавляет "Продолжить просмотр" из раздела Аниме в самый верх главной страницы
  */
 (function () {
     function start() {
-        console.log('Plugin History Replace', 'started');
+        console.log('Plugin Anime Continue Add', 'started');
 
         // Перехватываем вызов отрисовки строк контента
         var originalCall = Lampa.ContentRows.call;
@@ -15,22 +15,21 @@
 
             // Если мы на главной странице
             if (screen == 'main') {
-                // Получаем историю просмотров (тип 'history')
-                var history = Lampa.Favorite.get({
-                    type: 'history'
-                });
+                // Получаем список "Продолжить просмотр" для аниме
+                // Lampa автоматически фильтрует это через Favorite.continues('anime')
+                var animeContinues = Lampa.Favorite.continues('anime');
 
-                // Если история не пуста, заменяем первую строку (Сейчас смотрят)
-                if (history.length) {
-                    console.log('Plugin History Replace', 'replacing "Now Watch" with history');
+                // Если есть что продолжать смотреть в аниме, добавляем строку в самое начало
+                if (animeContinues.length) {
+                    console.log('Plugin Anime Continue Add', 'adding anime continue watching to the top');
 
-                    // В TMDB и CUB "Сейчас смотрят" всегда идет первой (индекс 0 в parts_data)
-                    calls[0] = function (call) {
+                    // Добавляем новую функцию в начало массива calls
+                    calls.unshift(function (call) {
                         call({
-                            results: history.slice(0, 20),
-                            title: Lampa.Lang.translate('title_history')
+                            results: animeContinues.slice(0, 20),
+                            title: Lampa.Lang.translate('title_continue') // "Продолжить просмотр"
                         });
-                    };
+                    });
                 }
             }
         };
