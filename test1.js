@@ -7,7 +7,7 @@
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
         'random': { path: "/catalog/random", paginated: true },
-        'playlists': { path: "/catalog/playlists", paginated: true },
+        'playlists': { path: "/catalog/playlists", paginated: true }, // Added Playlists API config
     };
     const API_SEARCH_ENDPOINT = "/search";
 
@@ -16,8 +16,8 @@
         'new-releases': "Новые релизы",
         'hottest': "Популярные",
         'random': "Случайные",
-        'playlists': "Плейлисты",
-        'playlist_videos_title': "Видео в плейлисте: {playlist_name}",
+        'playlists': "Плейлисты", // Added Playlists title fallback
+        'playlist_videos_title': "Видео в плейлисте: {playlist_name}", // New title for playlist video selection page
         'tags': "Теги",
         'filter_title': "Фильтр",
         'search_input_title': "Поиск по каталогу",
@@ -43,46 +43,14 @@
     };
 
     const TAG_SLUG_MAP = {"ahegao": "Ахегао", "bdsm": "БДСМ", "big-boobs": "Большая\xa0грудь", "blow-job": "Минет", "bondage": "Бондаж", "paizuri": "Пайзури", "censored": "С\xa0цензурой", "comedy": "Комедия", "cosplay": "Косплей", "creampie": "Крем-пай", "dark-skin": "Темная\xa0кожа", "facial": "На\xa0лицо", "fantasy": "Фэнтези", "filming": "Съемка", "footjob": "Футджоб", "futanari": "Футанари", "gangbang": "Гэнгбэнг", "glasses": "В\xa0очках", "harem": "Гарем", "hd": "HD", "horror": "Ужасы", "incest": "Инцест", "inflation": "Раздувание", "lactation": "Лактация", "small-boobs": "Маленькая\xa0грудь", "maids": "Горничные", "masturbation": "Мастурбация", "milf": "Милфы", "mind-break": "Свести\xa0с\xa0ума", "mind-control": "Контроль\xa0сознания", "monster-girl": "Монстры", "neko": "Неко", "ntr": "НТР", "nurses": "Медсестры", "orgy": "Оргия", "plot": "С\xa0сюжетом", "pov": "От\xa0первого\xa0лица", "pregnant": "Беременные", "public-sex": "Публичный\xa0секс", "rape": "Изнасилование", "reverse-rape": "Обратное\xa0изнасилование", "scat": "Дерьмо", "schoolgirls": "Школьницы", "shota": "Шота", "ero": "Эротика", "swimsuit": "Купальник", "teacher": "Учитель", "tentacles": "Тентакли", "threesome": "Тройничок", "toys": "Игрушки", "tsundere": "Цундере", "ugly-bastard": "Противный\xa0ублюдок", "uncensored": "Без\xa0цензуры", "vanilla": "Классика", "virgin": "Девственность", "watersports": "Золотой\xa0дождь", "x-ray": "X-ray", "yuri": "Юри"};
-    const ITEMS_PER_API_REQUEST = 47;
+	const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
     const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
 
-    // --- Small shared constants/helpers ---
+    // --- Small shared constants/helpers (no logic changes) ---
     const SKELETON_CARD_COUNT = 6;
     const MIN_APPEND_DELAY_MS = 400;
-
-    // --- HELPER: Universal Player Object Creator ---
-    // Это ключевая функция для SharePlay. Она заполняет все возможные поля.
-    function createPlayerObject(cardData, streamUrl) {
-        const title = cardData.name || cardData.title || 'Без названия';
-        const poster = cardData.poster || ''; 
-        const description = cardData.description || cardData.overview || '';
-        
-        return {
-            url: streamUrl,
-            title: title,           // Основной заголовок (для SharePlay)
-            name: title,            // Дублируем имя
-            original_name: cardData.original_name || title,
-            
-            poster: poster,         // Постер
-            img: poster,            // ВАЖНО: Lampa часто использует img вместо poster
-            image: poster,          // ВАЖНО: Некоторые нативные плееры ищут image
-            
-            description: description, // Описание
-            overview: description,    // ВАЖНО: Lampa часто использует overview
-            text: description,        // Резервное поле
-
-            id: cardData.id,
-            year: cardData.year || '',
-            type: cardData.type === "series" ? "tv" : "movie",
-            source: PLUGIN_SOURCE_KEY,
-            
-            // ВАЖНО: Передаем весь объект метаданных в поле meta.
-            // Многие нативные врапперы берут инфу именно отсюда.
-            meta: cardData 
-        };
-    }
 
     function buildStreamsUrlFromCompositeId(compositeId) {
         let itemId = compositeId;
@@ -113,6 +81,7 @@
         return getLangText(titleKeySuffix, fallbackText);
     }
 
+    // --- Global Language Helper ---
     const getLangText = (lang_key_suffix, fallback_text_or_default, replacements = {}) => {
         const full_lang_key = 'plugin_' + lang_key_suffix;
         let text = Lampa.Lang && typeof Lampa.Lang.translate === 'function' ? Lampa.Lang.translate(full_lang_key) : null;
@@ -129,6 +98,61 @@
         }
         return text;
     };
+
+    /**
+     * Unified Player Starter to match online.js structure for better metadata handling (SharePlay)
+     */
+    function startPlayer(stream_details, card_data, card_instance) {
+        if (stream_details.url) {
+            let video_url = stream_details.url;
+            video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
+
+            if (Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), { time: 1500 });
+
+            // Structure similar to online.js toPlayElement and display logic
+            const element = {
+                title: card_data.name || card_data.title || 'Без названия',
+                poster: card_data.poster || '',
+                url: video_url,
+                id: card_data.id,
+                type: card_data.type === "series" ? "tv" : "movie",
+                source: PLUGIN_SOURCE_KEY,
+                isonline: true, // Flag often used in online.js
+                callback: function() {
+                    // This callback is triggered by Lampa's player when playback starts/progresses
+                    if (card_instance && typeof card_instance.updateIcons === 'function') {
+                        card_instance.updateIcons();
+                    }
+                }
+            };
+
+            // Timeline logic
+            if (Lampa.Timeline && typeof Lampa.Timeline.view === 'function') {
+                element.timeline = Lampa.Timeline.view(element.id);
+            }
+
+            // Play
+            Lampa.Player.play(element);
+            
+            // Set Playlist (even if single item, ensures structure matches online.js)
+            Lampa.Player.playlist([element]);
+
+            // History
+            if (Lampa.Favorite && typeof Lampa.Favorite.add === 'function') {
+                Lampa.Favorite.add('history', element);
+            }
+            
+            // Immediate icon update fallback
+            if (card_instance) card_instance.updateIcons();
+
+        } else if (stream_details.externalUrl) {
+            let uo = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(stream_details.externalUrl);
+            if (Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), { time: 1500 });
+            Lampa.Utils.openLink(uo);
+        } else {
+            if (Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
+        }
+    }
 
     // --- PluginCard ---
     function PluginCard(data, userLang) {
@@ -179,7 +203,6 @@
                         id: video.id,
                         name: video.title,
                         poster: video.thumbnail,
-                        description: video.description || '',
                         type: "movie",
                         original_name: video.title,
                         source: PLUGIN_SOURCE_KEY
@@ -229,29 +252,8 @@
                                     items: pi,
                                     onBack: () => Lampa.Controller.toggle('content'),
                                     onSelect: si => {
-                                        const sd = si.stream_details;
-                                        // Используем универсальный создатель объекта плеера
-                                        let pld = createPlayerObject(videoFlaskData, '');
-                                        
-                                        if(sd.url) {
-                                            let vu = sd.url;
-                                            vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
-                                            
-                                            pld.url = vu;
-                                            // Добавляем инфо о стриме в sub_title (полезно для плеера)
-                                            pld.sub_title = si.title; 
-
-                                            if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
-                                            if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
-                                            
-                                            Lampa.Player.play(pld);
-                                            Lampa.Player.playlist([pld]);
-                                            if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
-                                            card.updateIcons();
-                                        } else {
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
-                                        }
+                                        // Use startPlayer for consistent playback
+                                        startPlayer(si.stream_details, videoFlaskData, card);
                                     }
                                 });
                             } else {
@@ -263,7 +265,6 @@
                         }, false, requestOptions);
                     });
 
-                    // ... (rest of hover logic same as before)
                     card_render.on("hover:focus", () => {
                         last_focused_card_element = card_render[0];
                         scroll.update(last_focused_card_element, true);
@@ -279,7 +280,10 @@
                         }
                         const searchTitle = russianTitle.replace(/\d+/g, '').trim();
                         const mn = [
-                            { title: 'Искать аниме', search_title: searchTitle },
+                            {
+                                title: 'Искать аниме',
+                                search_title: searchTitle
+                            },
                             { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
                             { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
                             { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
@@ -531,21 +535,28 @@
         this.appendCardsToDOM = function (metasToAppend, originalApiBatchLength, isEmptyAfterFilter = false) {
             body.find('.skeleton-loader-container').remove();
 
+            // --- ИСПРАВЛЕННЫЙ БЛОК ЛОГИКИ ПАГИНАЦИИ ---
             const isPaginating = this.isSearchMode || isTagCatalog || (currentCatalogConfig && currentCatalogConfig.paginated) || this.currentCatalogKey === 'playlists';
             
             if (this.currentCatalogKey === 'random') {
                 can_load_more = true;
             } else if (isPaginating) {
                 if (this.currentCatalogKey === 'playlists') {
+                    // Для плейлистов используется более безопасная логика, так как их размер страницы отличается.
+                    // Подгрузка остановится только когда сервер вернет пустой список.
                     can_load_more = originalApiBatchLength > 0;
                 } else {
+                    // Для остальных категорий используется стандартная, более эффективная логика,
+                    // так как мы знаем размер их страницы (ITEMS_PER_API_REQUEST).
                     if (originalApiBatchLength < ITEMS_PER_API_REQUEST) {
                         can_load_more = false;
                     }
                 }
             } else {
+                // Для непагинируемых категорий.
                 can_load_more = false;
             }
+            // --- КОНЕЦ ИСПРАВЛЕННОГО БЛОКА ---
 
             if (isEmptyAfterFilter && can_load_more && auto_load_attempts < MAX_AUTO_LOAD_ATTEMPTS) {
                 auto_load_attempts++; this.loadNextPage(true); return;
@@ -604,29 +615,8 @@
                                     items: pi,
                                     onBack: () => Lampa.Controller.toggle('content'),
                                     onSelect: si => {
-                                        const sd = si.stream_details;
-                                        // Используем универсальный создатель объекта плеера
-                                        let pld = createPlayerObject(cardFlaskData, '');
-
-                                        if(sd.url) {
-                                            let vu = sd.url;
-                                            vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
-                                            
-                                            pld.url = vu;
-                                            // Добавляем инфо о стриме
-                                            pld.sub_title = si.title;
-
-                                            if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
-                                            if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
-                                            
-                                            Lampa.Player.play(pld);
-                                            Lampa.Player.playlist([pld]);
-                                            if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
-                                            card.updateIcons();
-                                        } else {
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
-                                        }
+                                        // Use startPlayer for consistent playback
+                                        startPlayer(si.stream_details, cardFlaskData, card);
                                     }
                                 });
                             } else {
@@ -639,8 +629,7 @@
                     }
                 };
                 card_render.on("hover:enter", handleCardEnter);
-                // ... (rest of hover handlers)
-                
+
                 card_render.on("hover:focus", () => {
                     last_focused_card_element = card_render[0];
                     scroll.update(last_focused_card_element, true);
@@ -660,7 +649,10 @@
                     }
                     const searchTitle = russianTitle.replace(/\d+/g, '').trim();
                     const mn = [
-                        { title: 'Искать аниме', search_title: searchTitle },
+                        {
+                            title: 'Искать аниме',
+                            search_title: searchTitle
+                        },
                         { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
                         { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
                         { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
@@ -998,30 +990,8 @@
                                         Lampa.Controller.toggle('content'); 
                                     },
                                     onSelect: (selected_stream_item) => {
-                                        const stream_detail = selected_stream_item.stream_details;
-                                        // Используем универсальный создатель объекта плеера
-                                        let pld_for_player = createPlayerObject(cardDataForPlugin, '');
-
-                                        if (stream_detail.url) {
-                                            let video_url = stream_detail.url;
-                                            video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
-                                            
-                                            pld_for_player.url = video_url;
-                                            // Добавляем инфо о стриме
-                                            pld_for_player.sub_title = selected_stream_item.title;
-
-                                            if (Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld_for_player.timeline = Lampa.Timeline.view(pld_for_player.id) || {};
-                                            Lampa.Player.play(pld_for_player);
-                                            Lampa.Player.playlist([pld_for_player]);
-                                        } else if (stream_detail.externalUrl) {
-                                            let uo = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(stream_detail.externalUrl);
-                                            if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
-                                            Lampa.Utils.openLink(uo);
-                                        } else {
-                                            Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
-                                        }
-                                        Lampa.Select.close();
+                                        // Use startPlayer for consistent playback
+                                        startPlayer(selected_stream_item.stream_details, cardDataForPlugin, null);
                                     }
                                 });
                             } else {
