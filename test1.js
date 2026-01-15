@@ -48,9 +48,41 @@
     const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
 
-    // --- Small shared constants/helpers (no logic changes) ---
+    // --- Small shared constants/helpers ---
     const SKELETON_CARD_COUNT = 6;
     const MIN_APPEND_DELAY_MS = 400;
+
+    // --- HELPER: Universal Player Object Creator ---
+    // Это ключевая функция для SharePlay. Она заполняет все возможные поля.
+    function createPlayerObject(cardData, streamUrl) {
+        const title = cardData.name || cardData.title || 'Без названия';
+        const poster = cardData.poster || ''; 
+        const description = cardData.description || cardData.overview || '';
+        
+        return {
+            url: streamUrl,
+            title: title,           // Основной заголовок (для SharePlay)
+            name: title,            // Дублируем имя
+            original_name: cardData.original_name || title,
+            
+            poster: poster,         // Постер
+            img: poster,            // ВАЖНО: Lampa часто использует img вместо poster
+            image: poster,          // ВАЖНО: Некоторые нативные плееры ищут image
+            
+            description: description, // Описание
+            overview: description,    // ВАЖНО: Lampa часто использует overview
+            text: description,        // Резервное поле
+
+            id: cardData.id,
+            year: cardData.year || '',
+            type: cardData.type === "series" ? "tv" : "movie",
+            source: PLUGIN_SOURCE_KEY,
+            
+            // ВАЖНО: Передаем весь объект метаданных в поле meta.
+            // Многие нативные врапперы берут инфу именно отсюда.
+            meta: cardData 
+        };
+    }
 
     function buildStreamsUrlFromCompositeId(compositeId) {
         let itemId = compositeId;
@@ -81,7 +113,6 @@
         return getLangText(titleKeySuffix, fallbackText);
     }
 
-    // --- Global Language Helper ---
     const getLangText = (lang_key_suffix, fallback_text_or_default, replacements = {}) => {
         const full_lang_key = 'plugin_' + lang_key_suffix;
         let text = Lampa.Lang && typeof Lampa.Lang.translate === 'function' ? Lampa.Lang.translate(full_lang_key) : null;
@@ -148,7 +179,7 @@
                         id: video.id,
                         name: video.title,
                         poster: video.thumbnail,
-                        description: video.description || '', // Сохраняем описание для плеера
+                        description: video.description || '',
                         type: "movie",
                         original_name: video.title,
                         source: PLUGIN_SOURCE_KEY
@@ -199,24 +230,21 @@
                                     onBack: () => Lampa.Controller.toggle('content'),
                                     onSelect: si => {
                                         const sd = si.stream_details;
-                                        const pld = {
-                                            title: videoFlaskData.name || 'Без названия',
-                                            poster: videoFlaskData.poster || '',
-                                            id: videoFlaskData.id,
-                                            name: videoFlaskData.name,
-                                            description: videoFlaskData.description || '', // Передача описания для SharePlay
-                                            overview: videoFlaskData.description || '',    // Передача описания (альтернативное поле)
-                                            type: "movie",
-                                            source: PLUGIN_SOURCE_KEY
-                                        };
+                                        // Используем универсальный создатель объекта плеера
+                                        let pld = createPlayerObject(videoFlaskData, '');
+                                        
                                         if(sd.url) {
                                             let vu = sd.url;
                                             vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
                                             if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
                                             
                                             pld.url = vu;
+                                            // Добавляем инфо о стриме в sub_title (полезно для плеера)
+                                            pld.sub_title = si.title; 
+
                                             if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
                                             if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                            
                                             Lampa.Player.play(pld);
                                             Lampa.Player.playlist([pld]);
                                             if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
@@ -235,6 +263,7 @@
                         }, false, requestOptions);
                     });
 
+                    // ... (rest of hover logic same as before)
                     card_render.on("hover:focus", () => {
                         last_focused_card_element = card_render[0];
                         scroll.update(last_focused_card_element, true);
@@ -250,10 +279,7 @@
                         }
                         const searchTitle = russianTitle.replace(/\d+/g, '').trim();
                         const mn = [
-                            {
-                                title: 'Искать аниме',
-                                search_title: searchTitle
-                            },
+                            { title: 'Искать аниме', search_title: searchTitle },
                             { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
                             { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
                             { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
@@ -579,25 +605,21 @@
                                     onBack: () => Lampa.Controller.toggle('content'),
                                     onSelect: si => {
                                         const sd = si.stream_details;
-                                        const pld = {
-                                            title: cardFlaskData.name || 'Без названия', 
-                                            poster: cardFlaskData.poster || '', 
-                                            id: cardFlaskData.id, 
-                                            name: cardFlaskData.name, 
-                                            description: cardFlaskData.description || '', // Передача описания для SharePlay
-                                            overview: cardFlaskData.description || '',    // Передача описания (альтернативное поле)
-                                            type: cardFlaskData.type === 'series' ? 'tv' : 'movie', 
-                                            original_name: cardFlaskData.original_name || '', 
-                                            source: PLUGIN_SOURCE_KEY
-                                        };
+                                        // Используем универсальный создатель объекта плеера
+                                        let pld = createPlayerObject(cardFlaskData, '');
+
                                         if(sd.url) {
                                             let vu = sd.url;
                                             vu = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(vu);
                                             if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), {time: 1500});
                                             
                                             pld.url = vu;
+                                            // Добавляем инфо о стриме
+                                            pld.sub_title = si.title;
+
                                             if(Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld.timeline = Lampa.Timeline.view(pld.id) || {};
                                             if(Lampa.Timeline && typeof Lampa.Timeline.update === 'function') Lampa.Timeline.update(pld);
+                                            
                                             Lampa.Player.play(pld);
                                             Lampa.Player.playlist([pld]);
                                             if(Lampa.Favorite && typeof Lampa.Favorite.add === 'function') Lampa.Favorite.add('history', pld);
@@ -617,7 +639,8 @@
                     }
                 };
                 card_render.on("hover:enter", handleCardEnter);
-
+                // ... (rest of hover handlers)
+                
                 card_render.on("hover:focus", () => {
                     last_focused_card_element = card_render[0];
                     scroll.update(last_focused_card_element, true);
@@ -637,10 +660,7 @@
                     }
                     const searchTitle = russianTitle.replace(/\d+/g, '').trim();
                     const mn = [
-                        {
-                            title: 'Искать аниме',
-                            search_title: searchTitle
-                        },
+                        { title: 'Искать аниме', search_title: searchTitle },
                         { title: getLangText('title_book', CATALOG_TITLES_FALLBACK.title_book), where: 'book', checkbox: true, checked: sT.book },
                         { title: getLangText('title_like', CATALOG_TITLES_FALLBACK.title_like), where: 'like', checkbox: true, checked: sT.like },
                         { title: getLangText('title_wath', CATALOG_TITLES_FALLBACK.title_wath), where: 'wath', checkbox: true, checked: sT.wath },
@@ -979,21 +999,18 @@
                                     },
                                     onSelect: (selected_stream_item) => {
                                         const stream_detail = selected_stream_item.stream_details;
-                                        const pld_for_player = {
-                                            title: cardDataForPlugin.name || cardDataForPlugin.title || 'Без названия',
-                                            poster: cardDataForPlugin.poster || '', id: cardDataForPlugin.id,
-                                            name: cardDataForPlugin.name || cardDataForPlugin.title, 
-                                            description: cardDataForPlugin.description || '', // Передача описания для SharePlay
-                                            overview: cardDataForPlugin.description || '',    // Передача описания (альтернативное поле)
-                                            type: cardDataForPlugin.type === "series" ? "tv" : "movie",
-                                            source: PLUGIN_SOURCE_KEY
-                                        };
+                                        // Используем универсальный создатель объекта плеера
+                                        let pld_for_player = createPlayerObject(cardDataForPlugin, '');
+
                                         if (stream_detail.url) {
                                             let video_url = stream_detail.url;
                                             video_url = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(video_url);
                                             if(Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification),{time:1500});
                                             
                                             pld_for_player.url = video_url;
+                                            // Добавляем инфо о стриме
+                                            pld_for_player.sub_title = selected_stream_item.title;
+
                                             if (Lampa.Timeline && typeof Lampa.Timeline.view === 'function') pld_for_player.timeline = Lampa.Timeline.view(pld_for_player.id) || {};
                                             Lampa.Player.play(pld_for_player);
                                             Lampa.Player.playlist([pld_for_player]);
