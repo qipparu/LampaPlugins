@@ -11,6 +11,7 @@
 
         var updateTimer;
         var updateDelay = 15000; // Задержка в миллисекундах (15 секунд)
+        var tmdbCache = {}; // Кеш для TMDB ID
 
         /**
          * Утилита для запросов к Shikimori GraphQL
@@ -38,9 +39,14 @@
          * Утилита для маппинга MAL ID -> TMDB ID
          */
         function getTMDBId(malId, callback) {
+            if (tmdbCache[malId]) return callback(tmdbCache[malId]);
+
             var network = new Lampa.Reguest();
             network.silent('https://arm.haglund.dev/api/v2/ids?source=myanimelist&include=themoviedb&id=' + malId, function (data) {
-                if (data && data.themoviedb) callback(data.themoviedb);
+                if (data && data.themoviedb) {
+                    tmdbCache[malId] = data.themoviedb;
+                    callback(data.themoviedb);
+                }
                 else callback(null);
             }, function () {
                 callback(null);
@@ -75,7 +81,7 @@
         /**
          * Функция обновления данных для Apple TV TopShelf
          */
-        function updateAppleTVTopShelf() {
+        function updateAppleTVTopShelf(isBackground) {
             try {
                 var animeContinues = Lampa.Favorite.continues('anime');
 
@@ -125,20 +131,23 @@
                                     });
                                 }
 
-                                // Сохраняем и уведомляем
+                                // Сохраняем
                                 if (sections.length) {
                                     var data = {
                                         updatedAt: Math.floor(Date.now() / 1000),
                                         sections: sections
                                     };
                                     Lampa.Storage.set('appletv_topshelf', JSON.stringify(data));
-                                    console.log('Plugin Anime Continue Add', 'TopShelf JSON saved with ' + sections.length + ' sections');
+                                    console.log('Plugin Anime Continue Add', 'TopShelf JSON saved' + (isBackground ? ' on background' : ''));
 
-                                    if (updateTimer) clearTimeout(updateTimer);
-                                    updateTimer = setTimeout(function () {
-                                        window.location.assign('lampa://topshelfupdate');
-                                        console.log('Plugin Anime Continue Add', 'TopShelf update triggered');
-                                    }, updateDelay);
+                                    // Если мы не в фоне, уведомляем систему об изменении с задержкой
+                                    if (!isBackground) {
+                                        if (updateTimer) clearTimeout(updateTimer);
+                                        updateTimer = setTimeout(function () {
+                                            window.location.assign('lampa://topshelfupdate');
+                                            console.log('Plugin Anime Continue Add', 'TopShelf update triggered');
+                                        }, updateDelay);
+                                    }
                                 }
                             });
                         });
@@ -148,6 +157,14 @@
                 console.log('Plugin Anime Continue Add', 'TopShelf error:', e.message);
             }
         }
+
+        // Подписываемся на сворачивание приложения
+        function onAppBackground(e) {
+            console.log('Plugin Anime Continue Add', 'handling app-background');
+            updateAppleTVTopShelf(true);
+        }
+
+        window.addEventListener('appletv:app-background', onAppBackground);
 
         // Перехватываем вызов отрисовки строк контента
         var originalCall = Lampa.ContentRows.call;
