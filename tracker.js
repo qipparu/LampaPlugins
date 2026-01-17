@@ -6,34 +6,144 @@
     function start() {
         console.log('Plugin Anime Continue Add', 'started');
 
+        // Устанавливаем флаг кастомного TopShelf
+        Lampa.Storage.set('appletv_topshelf_custom', 'true');
+
+        var updateTimer;
+        var updateDelay = 15000; // Задержка в миллисекундах (15 секунд)
+
+        /**
+         * Утилита для запросов к Shikimori GraphQL
+         */
+        function fetchShikimori(query, callback) {
+            var network = new Lampa.Reguest();
+            network.native('https://shikimori.one/api/graphql', function (data) {
+                try {
+                    var json = typeof data === 'string' ? JSON.parse(data) : data;
+                    if (json && json.data) callback(json.data.animes || []);
+                    else callback([]);
+                } catch (e) {
+                    callback([]);
+                }
+            }, function () {
+                callback([]);
+            }, JSON.stringify({ query: query }), {
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+
+        /**
+         * Утилита для маппинга MAL ID -> TMDB ID
+         */
+        function getTMDBId(malId, callback) {
+            var network = new Lampa.Reguest();
+            network.silent('https://arm.haglund.dev/api/v2/ids?source=myanimelist&include=themoviedb&id=' + malId, function (data) {
+                if (data && data.themoviedb) callback(data.themoviedb);
+                else callback(null);
+            }, function () {
+                callback(null);
+            });
+        }
+
+        /**
+         * Преобразование элементов Shikimori в формат TopShelf
+         */
+        function mapShikimoriItems(shikiItems, callback) {
+            var items = [];
+            var processed = 0;
+
+            if (shikiItems.length === 0) return callback([]);
+
+            shikiItems.forEach(function (shiki) {
+                getTMDBId(shiki.malId, function (tmdbId) {
+                    if (tmdbId) {
+                        items.push({
+                            id: tmdbId.toString(),
+                            title: shiki.russian || shiki.name,
+                            imageURL: shiki.poster ? shiki.poster.mainUrl : '',
+                            deepLink: 'lampa://topshelf?card=' + tmdbId + '&media=tv&source=tmdb'
+                        });
+                    }
+                    processed++;
+                    if (processed === shikiItems.length) callback(items);
+                });
+            });
+        }
+
+        /**
+         * Функция обновления данных для Apple TV TopShelf
+         */
         function updateAppleTVTopShelf() {
             try {
                 var animeContinues = Lampa.Favorite.continues('anime');
-                var items = animeContinues.slice(0, 20).map(function (item) {
+
+                // 1. Секция: Продолжить просмотр
+                var continueItems = animeContinues.slice(0, 5).map(function (item) {
+                    var img = item.img || item.poster;
+                    if (img && img.indexOf('/') === 0) img = 'https://image.tmdb.org/t/p/w500' + img;
+
                     return {
                         id: item.id.toString(),
                         title: item.title || item.name,
-                        imageURL: item.img || item.poster,
-                        deepLink: 'lampa://topshelf?card=' + item.id + '&media=' + (item.method || 'tv') + '&source=' + (item.source || 'tmdb')
+                        imageURL: img,
+                        deepLink: 'lampa://topshelf?card=' + item.id + '&media=' + (item.method == 'movie' ? 'movie' : 'tv') + '&source=' + (item.source || 'tmdb')
                     };
                 });
 
-                var data = {
-                    updatedAt: Math.floor(Date.now() / 1000),
-                    sections: [
-                        {
-                            title: 'Продолжить просмотр аниме',
-                            imageShape: 'poster',
-                            items: items
-                        }
-                    ]
-                };
-
-                if (items.length) {
-                    Lampa.Storage.set('appletv_topshelf', JSON.stringify(data));
-                    window.location.assign('lampa://topshelfupdate');
-                    console.log('Plugin Anime Continue Add', 'TopShelf updated', data);
+                var sections = [];
+                if (continueItems.length) {
+                    sections.push({
+                        title: 'Продолжить просмотр',
+                        imageShape: 'poster',
+                        items: continueItems
+                    });
                 }
+
+                // 2. Секции из Shikimori
+                var NOW_AIRING_QUERY = 'query { animes(status: "ongoing", order: popularity, limit: 10) { malId russian name poster { mainUrl } } }';
+                var RECENTLY_RELEASED_QUERY = 'query { animes(status: "released", order: aired_on, limit: 10) { malId russian name poster { mainUrl } } }';
+
+                fetchShikimori(NOW_AIRING_QUERY, function (ongoingItems) {
+                    mapShikimoriItems(ongoingItems, function (mappedOngoing) {
+                        if (mappedOngoing.length) {
+                            sections.push({
+                                title: 'Сейчас выходят',
+                                imageShape: 'poster',
+                                items: mappedOngoing.slice(0, 5)
+                            });
+                        }
+
+                        fetchShikimori(RECENTLY_RELEASED_QUERY, function (releasedItems) {
+                            mapShikimoriItems(releasedItems, function (mappedReleased) {
+                                if (mappedReleased.length) {
+                                    sections.push({
+                                        title: 'Недавно вышедшее',
+                                        imageShape: 'poster',
+                                        items: mappedReleased.slice(0, 5)
+                                    });
+                                }
+
+                                // Сохраняем и уведомляем
+                                if (sections.length) {
+                                    var data = {
+                                        updatedAt: Math.floor(Date.now() / 1000),
+                                        sections: sections
+                                    };
+                                    Lampa.Storage.set('appletv_topshelf', JSON.stringify(data));
+                                    console.log('Plugin Anime Continue Add', 'TopShelf JSON saved with ' + sections.length + ' sections');
+
+                                    if (updateTimer) clearTimeout(updateTimer);
+                                    updateTimer = setTimeout(function () {
+                                        window.location.assign('lampa://topshelfupdate');
+                                        console.log('Plugin Anime Continue Add', 'TopShelf update triggered');
+                                    }, updateDelay);
+                                }
+                            });
+                        });
+                    });
+                });
             } catch (e) {
                 console.log('Plugin Anime Continue Add', 'TopShelf error:', e.message);
             }
