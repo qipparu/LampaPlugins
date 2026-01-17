@@ -12,6 +12,8 @@
         var updateTimer;
         var updateDelay = 15000; // Задержка в миллисекундах (15 секунд)
         var tmdbCache = {}; // Кеш для TMDB ID
+        var posterCache = {}; // Кеш для путей обложек TMDB
+        var TMDB_API_KEY = '7f4a0bd0bd3315bb832e17feda70b5cd';
 
         /**
          * Утилита для запросов к Shikimori GraphQL
@@ -54,26 +56,64 @@
         }
 
         /**
+         * Утилита для получения обложки из TMDB
+         */
+        function getTMDBPoster(tmdbId, kind, callback) {
+            if (posterCache[tmdbId]) return callback(posterCache[tmdbId]);
+
+            var network = new Lampa.Reguest();
+            var type = (kind === 'movie') ? 'movie' : 'tv';
+            var otherType = (type === 'movie') ? 'tv' : 'movie';
+
+            function tryFetch(currentType, fallback) {
+                network.silent('https://api.tmdb.org/3/' + currentType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=ru', function (data) {
+                    if (data && data.poster_path) {
+                        var img = 'https://image.tmdb.org/t/p/original' + data.poster_path;
+                        posterCache[tmdbId] = img;
+                        callback(img);
+                    } else if (fallback) {
+                        fallback();
+                    } else {
+                        callback(null);
+                    }
+                }, function () {
+                    if (fallback) fallback();
+                    else callback(null);
+                });
+            }
+
+            tryFetch(type, function () {
+                tryFetch(otherType, null);
+            });
+        }
+
+        /**
          * Преобразование элементов Shikimori в формат TopShelf
          */
         function mapShikimoriItems(shikiItems, callback) {
-            var items = [];
+            var items = new Array(shikiItems.length);
             var processed = 0;
 
             if (shikiItems.length === 0) return callback([]);
 
-            shikiItems.forEach(function (shiki) {
+            shikiItems.forEach(function (shiki, index) {
                 getTMDBId(shiki.malId, function (tmdbId) {
                     if (tmdbId) {
-                        items.push({
-                            id: tmdbId.toString(),
-                            title: shiki.russian || shiki.name,
-                            imageURL: shiki.poster ? shiki.poster.mainUrl : '',
-                            deepLink: 'lampa://topshelf?card=' + tmdbId + '&media=tv&source=tmdb'
+                        getTMDBPoster(tmdbId, shiki.kind, function (posterURL) {
+                            items[index] = {
+                                id: tmdbId.toString(),
+                                title: shiki.russian || shiki.name,
+                                imageURL: posterURL || (shiki.poster ? shiki.poster.mainUrl : ''),
+                                deepLink: 'lampa://topshelf?card=' + tmdbId + '&media=' + (shiki.kind === 'movie' ? 'movie' : 'tv') + '&source=tmdb'
+                            };
+                            processed++;
+                            if (processed === shikiItems.length) callback(items.filter(Boolean));
                         });
+                    } else {
+                        items[index] = null;
+                        processed++;
+                        if (processed === shikiItems.length) callback(items.filter(Boolean));
                     }
-                    processed++;
-                    if (processed === shikiItems.length) callback(items);
                 });
             });
         }
@@ -88,7 +128,7 @@
                 // 1. Секция: Продолжить просмотр
                 var continueItems = animeContinues.slice(0, 5).map(function (item) {
                     var img = item.img || item.poster;
-                    if (img && img.indexOf('/') === 0) img = 'https://image.tmdb.org/t/p/w500' + img;
+                    if (img && img.indexOf('/') === 0) img = 'https://image.tmdb.org/t/p/original' + img;
 
                     return {
                         id: item.id.toString(),
@@ -108,8 +148,8 @@
                 }
 
                 // 2. Секции из Shikimori
-                var NOW_AIRING_QUERY = 'query { animes(status: "ongoing", order: popularity, limit: 10) { malId russian name poster { mainUrl } } }';
-                var RECENTLY_RELEASED_QUERY = 'query { animes(status: "released", order: aired_on, limit: 10) { malId russian name poster { mainUrl } } }';
+                var NOW_AIRING_QUERY = 'query { animes(status: "ongoing", order: popularity, limit: 10) { malId russian name kind poster { mainUrl } } }';
+                var RECENTLY_RELEASED_QUERY = 'query { animes(status: "released", order: aired_on, limit: 10) { malId russian name kind poster { mainUrl } } }';
 
                 fetchShikimori(NOW_AIRING_QUERY, function (ongoingItems) {
                     mapShikimoriItems(ongoingItems, function (mappedOngoing) {
