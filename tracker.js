@@ -6,6 +6,39 @@
     function start() {
         console.log('Plugin Anime Continue Add', 'started');
 
+        function updateAppleTVTopShelf() {
+            try {
+                var animeContinues = Lampa.Favorite.continues('anime');
+                var items = animeContinues.slice(0, 20).map(function (item) {
+                    return {
+                        id: item.id.toString(),
+                        title: item.title || item.name,
+                        imageURL: item.img || item.poster,
+                        deepLink: 'lampa://topshelf?card=' + item.id + '&media=' + (item.method || 'tv') + '&source=' + (item.source || 'tmdb')
+                    };
+                });
+
+                var data = {
+                    updatedAt: Math.floor(Date.now() / 1000),
+                    sections: [
+                        {
+                            title: 'Продолжить просмотр аниме',
+                            imageShape: 'poster',
+                            items: items
+                        }
+                    ]
+                };
+
+                if (items.length) {
+                    Lampa.Storage.set('appletv_topshelf', JSON.stringify(data));
+                    window.location.assign('lampa://topshelfupdate');
+                    console.log('Plugin Anime Continue Add', 'TopShelf updated', data);
+                }
+            } catch (e) {
+                console.log('Plugin Anime Continue Add', 'TopShelf error:', e.message);
+            }
+        }
+
         // Перехватываем вызов отрисовки строк контента
         var originalCall = Lampa.ContentRows.call;
 
@@ -31,8 +64,14 @@
                         });
                     });
                 }
+
+                // Обновляем TopShelf для Apple TV
+                updateAppleTVTopShelf();
             }
         };
+
+        // Обновляем при запуске
+        updateAppleTVTopShelf();
     }
 
     // Ждем готовности приложения
