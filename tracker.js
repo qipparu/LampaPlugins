@@ -10,7 +10,7 @@
         Lampa.Storage.set('appletv_topshelf_custom', 'true');
 
         var updateTimer;
-        var updateDelay = 15000; // Задержка в миллисекундах (15 секунд)
+        var updateDelay = 0; // Задержка в миллисекундах (15 секунд)
         var tmdbCache = {}; // Кеш для TMDB ID
         var posterCache = {}; // Кеш для путей обложек TMDB
         var TMDB_API_KEY = '7f4a0bd0bd3315bb832e17feda70b5cd';
