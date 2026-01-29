@@ -65,12 +65,38 @@
             var type = (kind === 'movie') ? 'movie' : 'tv';
             var otherType = (type === 'movie') ? 'tv' : 'movie';
 
-            function tryFetch(currentType, fallback) {
-                network.silent('https://api.tmdb.org/3/' + currentType + '/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=ru', function (data) {
-                    if (data && data.poster_path) {
-                        var img = 'https://image.tmdb.org/t/p/original' + data.poster_path;
-                        posterCache[tmdbId] = img;
-                        callback(img);
+            function fetchImages(currentType, fallback) {
+                var url = 'https://api.tmdb.org/3/' + currentType + '/' + tmdbId + '/images?api_key=' + TMDB_API_KEY + '&include_image_language=ru,xx,en,ja';
+
+                network.silent(url, function (data) {
+                    if (data && data.posters && data.posters.length) {
+                        var priorities = ['ru', 'xx', 'en', 'ja'];
+                        var found = null;
+
+                        for (var i = 0; i < priorities.length; i++) {
+                            var lang = priorities[i];
+                            for (var j = 0; j < data.posters.length; j++) {
+                                var p = data.posters[j];
+                                var pLang = p.iso_639_1;
+                                // xx often represents textless, but can be null/empty in some contexts. 
+                                // TMDB usually returns "xx" or null for no language.
+                                if (pLang == lang || (lang == 'xx' && (!pLang || pLang == 'null'))) {
+                                    found = p;
+                                    break;
+                                }
+                            }
+                            if (found) break;
+                        }
+
+                        if (found) {
+                            var img = 'https://image.tmdb.org/t/p/original' + found.file_path;
+                            posterCache[tmdbId] = img;
+                            callback(img);
+                        } else if (fallback) {
+                            fallback();
+                        } else {
+                            callback(null);
+                        }
                     } else if (fallback) {
                         fallback();
                     } else {
@@ -82,8 +108,8 @@
                 });
             }
 
-            tryFetch(type, function () {
-                tryFetch(otherType, null);
+            fetchImages(type, function () {
+                fetchImages(otherType, null);
             });
         }
 
