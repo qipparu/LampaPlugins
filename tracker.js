@@ -44,10 +44,14 @@
             if (tmdbCache[malId]) return callback(tmdbCache[malId]);
 
             var network = new Lampa.Reguest();
-            network.silent('https://arm.haglund.dev/api/v2/ids?source=myanimelist&include=themoviedb&id=' + malId, function (data) {
+            network.silent('https://animeapi.my.id/myanimelist/' + malId, function (data) {
                 if (data && data.themoviedb) {
-                    tmdbCache[malId] = data.themoviedb;
-                    callback(data.themoviedb);
+                    var result = {
+                        id: data.themoviedb,
+                        type: data.themoviedb_type
+                    };
+                    tmdbCache[malId] = result;
+                    callback(result);
                 }
                 else callback(null);
             }, function () {
@@ -130,14 +134,17 @@
                     return;
                 }
 
-                getTMDBId(shiki.malId, function (tmdbId) {
-                    if (tmdbId) {
-                        getTMDBPoster(tmdbId, shiki.kind, function (posterURL) {
+                getTMDBId(shiki.malId, function (tmdbInfo) {
+                    if (tmdbInfo && tmdbInfo.id) {
+                        // Use the type from API or fallback to shikimori kind logic
+                        var mediaType = tmdbInfo.type || (shiki.kind === 'movie' ? 'movie' : 'tv');
+
+                        getTMDBPoster(tmdbInfo.id, mediaType, function (posterURL) {
                             items[index] = {
-                                id: tmdbId.toString(),
+                                id: tmdbInfo.id.toString(),
                                 title: shiki.russian || shiki.name,
                                 imageURL: posterURL || (shiki.poster ? shiki.poster.mainUrl : ''),
-                                deepLink: 'lampa://topshelf?card=' + tmdbId + '&media=' + (shiki.kind === 'movie' ? 'movie' : 'tv') + '&source=tmdb'
+                                deepLink: 'lampa://topshelf?card=' + tmdbInfo.id + '&media=' + mediaType + '&source=tmdb'
                             };
                             processed++;
                             if (processed === shikiItems.length) callback(items.filter(Boolean));
