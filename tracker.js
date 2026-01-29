@@ -12,8 +12,20 @@
         var updateTimer;
         var updateDelay = 0; // Задержка в миллисекундах (15 секунд)
         var loading = false; // Флаг процесса обновления
-        var tmdbCache = {}; // Кеш для TMDB ID
-        var posterCache = {}; // Кеш для путей обложек TMDB
+        // Кеширование (Persistent)
+        function loadCache(key) {
+            var val = Lampa.Storage.get(key, '{}');
+            try { return typeof val === 'string' ? JSON.parse(val) : val; }
+            catch (e) { return {}; }
+        }
+
+        var tmdbCache = loadCache('shikimori_tmdb_cache');
+        var posterCache = loadCache('shikimori_poster_cache');
+
+        function saveCaches() {
+            Lampa.Storage.set('shikimori_tmdb_cache', JSON.stringify(tmdbCache));
+            Lampa.Storage.set('shikimori_poster_cache', JSON.stringify(posterCache));
+        }
         var TMDB_API_KEY = '7f4a0bd0bd3315bb832e17feda70b5cd';
 
         /**
@@ -133,7 +145,10 @@
                 if (!shiki || !shiki.malId) {
                     items[index] = null;
                     processed++;
-                    if (processed === shikiItems.length) callback(items.filter(Boolean));
+                    if (processed === shikiItems.length) {
+                        saveCaches();
+                        callback(items.filter(Boolean));
+                    }
                     return;
                 }
 
@@ -150,12 +165,18 @@
                                 deepLink: 'lampa://topshelf?card=' + tmdbInfo.id + '&media=' + mediaType + '&source=tmdb'
                             };
                             processed++;
-                            if (processed === shikiItems.length) callback(items.filter(Boolean));
+                            if (processed === shikiItems.length) {
+                                saveCaches();
+                                callback(items.filter(Boolean));
+                            }
                         });
                     } else {
                         items[index] = null;
                         processed++;
-                        if (processed === shikiItems.length) callback(items.filter(Boolean));
+                        if (processed === shikiItems.length) {
+                            saveCaches();
+                            callback(items.filter(Boolean));
+                        }
                     }
                 });
             });
@@ -164,8 +185,21 @@
         /**
          * Функция обновления данных для Apple TV TopShelf
          */
+        var lastUpdateTimestamp = 0;
+        var UPDATE_INTERVAL = 120 * 60 * 1000; // 5 минут
+
+        /**
+         * Функция обновления данных для Apple TV TopShelf
+         */
         function updateAppleTVTopShelf(isBackground) {
             if (loading) return;
+
+            // Если не в фоне и прошло меньше времени, чем интервал обновления — пропускаем
+            if (!isBackground && (Date.now() - lastUpdateTimestamp < UPDATE_INTERVAL)) {
+                console.log('Plugin Anime Continue Add', 'Skipping TopShelf update (throttled)');
+                return;
+            }
+
             loading = true;
 
             try {
@@ -242,6 +276,7 @@
                                             }
                                         }
                                         loading = false;
+                                        lastUpdateTimestamp = Date.now();
                                     });
                                 });
                             });
