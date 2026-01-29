@@ -44,7 +44,11 @@
             if (tmdbCache[malId]) return callback(tmdbCache[malId]);
 
             var network = new Lampa.Reguest();
-            network.silent('https://animeapi.my.id/myanimelist/' + malId, function (data) {
+            // Use CORS proxy to bypass browser restrictions
+            var proxy = 'https://corsproxy.io/?';
+            var url = proxy + encodeURIComponent('https://animeapi.my.id/myanimelist/' + malId);
+
+            network.silent(url, function (data) {
                 if (data && data.themoviedb) {
                     var result = {
                         id: data.themoviedb,
