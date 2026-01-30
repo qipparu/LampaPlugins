@@ -2,7 +2,7 @@
     'use strict';
 
     // --- API и Константы ---
-    const FLASK_API_BASE = "http://77.91.78.5/scraper";
+    const FLASK_API_BASE = "https://qipparu.duckdns.org/scraper/";
     const API_CATALOG_CONFIG = {
         'new-releases': { path: "/catalog/new-releases", paginated: true, default_main: true },
         'hottest': { path: "/catalog/hottest", paginated: false },
@@ -45,7 +45,7 @@
     const TAG_SLUG_MAP = {"ahegao": "Ахегао", "bdsm": "БДСМ", "big-boobs": "Большая\xa0грудь", "blow-job": "Минет", "bondage": "Бондаж", "paizuri": "Пайзури", "censored": "С\xa0цензурой", "comedy": "Комедия", "cosplay": "Косплей", "creampie": "Крем-пай", "dark-skin": "Темная\xa0кожа", "facial": "На\xa0лицо", "fantasy": "Фэнтези", "filming": "Съемка", "footjob": "Футджоб", "futanari": "Футанари", "gangbang": "Гэнгбэнг", "glasses": "В\xa0очках", "harem": "Гарем", "hd": "HD", "horror": "Ужасы", "incest": "Инцест", "inflation": "Раздувание", "lactation": "Лактация", "small-boobs": "Маленькая\xa0грудь", "maids": "Горничные", "masturbation": "Мастурбация", "milf": "Милфы", "mind-break": "Свести\xa0с\xa0ума", "mind-control": "Контроль\xa0сознания", "monster-girl": "Монстры", "neko": "Неко", "ntr": "НТР", "nurses": "Медсестры", "orgy": "Оргия", "plot": "С\xa0сюжетом", "pov": "От\xa0первого\xa0лица", "pregnant": "Беременные", "public-sex": "Публичный\xa0секс", "rape": "Изнасилование", "reverse-rape": "Обратное\xa0изнасилование", "scat": "Дерьмо", "schoolgirls": "Школьницы", "shota": "Шота", "ero": "Эротика", "swimsuit": "Купальник", "teacher": "Учитель", "tentacles": "Тентакли", "threesome": "Тройничок", "toys": "Игрушки", "tsundere": "Цундере", "ugly-bastard": "Противный\xa0ублюдок", "uncensored": "Без\xa0цензуры", "vanilla": "Классика", "virgin": "Девственность", "watersports": "Золотой\xa0дождь", "x-ray": "X-ray", "yuri": "Юри"};
 	const ITEMS_PER_API_REQUEST = 47;
     const STREAM_ENDPOINT_TPL = FLASK_API_BASE + "/streams/{type}/{id}.json";
-    const PROXY_FOR_EXTERNAL_URLS = "http://77.91.78.5/proxy/proxy?url=";
+    const PROXY_FOR_EXTERNAL_URLS = "https://qipparu.duckdns.org/proxy/proxy?url=";
     const PLUGIN_SOURCE_KEY = 'h_hub_plugin_source';
 
     // --- Small shared constants/helpers (no logic changes) ---
