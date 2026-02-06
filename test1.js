@@ -148,7 +148,7 @@
         } else if (stream_details.externalUrl) {
             let uo = PROXY_FOR_EXTERNAL_URLS + encodeURIComponent(stream_details.externalUrl);
             if (Lampa.Noty) Lampa.Noty.show(getLangText('proxy_loading_notification', CATALOG_TITLES_FALLBACK.proxy_loading_notification), { time: 1500 });
-            Lampa.Utils.openLink(uo);
+            window.open(uo, '_blank');
         } else {
             if (Lampa.Noty) Lampa.Noty.show(getLangText('player_stream_error_url', CATALOG_TITLES_FALLBACK.player_stream_error_url));
         }
